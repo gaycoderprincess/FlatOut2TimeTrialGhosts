@@ -80,9 +80,9 @@ public:
 
 class tGameMain {
 public:
-	uint8_t _0[0x46C];
-	int nLevelId;			// +46C
-	uint8_t _470[0x18];
+	uint8_t _0[0x480];
+	int nLevelId;			// +480
+	uint8_t _484[0x4];
 	int nNumLaps;			// +488
 	uint8_t _48C[0x52C];
 	PlayerHost* pHost;		// +9B8

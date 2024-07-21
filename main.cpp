@@ -84,7 +84,7 @@ bool ShouldGhostRun() {
 }
 
 std::string GetGhostFilename(int car, int track) {
-	return "Ghosts/Track" + std::to_string(track + 1) + "_Car" + std::to_string(car + 1) + ".fo2replay";
+	return "Ghosts/Track" + std::to_string(track) + "_Car" + std::to_string(car + 1) + ".fo2replay";
 }
 
 void SavePB(int car, int track) {
