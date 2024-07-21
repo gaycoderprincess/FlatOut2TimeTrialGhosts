@@ -1,0 +1,5 @@
+# FlatOut 2 Time Trial Ghosts by Chloe @gaycoderprincess
+# enjoy, nya~ :3
+
+[main]
+ghost_visuals = 2					# 0 - Always show the entire car, 1 - always show the car as a ghost, 2 - only make the car a ghost when near it
