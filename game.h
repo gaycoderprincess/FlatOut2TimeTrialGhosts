@@ -84,7 +84,9 @@ public:
 	int nLevelId;			// +480
 	uint8_t _484[0x4];
 	int nNumLaps;			// +488
-	uint8_t _48C[0x52C];
+	uint8_t _48C[0x18];
+	float fNitroMultiplier;	// +4A4
+	uint8_t _4A8[0x510];
 	PlayerHost* pHost;		// +9B8
 };
 auto& pGame = *(tGameMain**)0x8E8410;
