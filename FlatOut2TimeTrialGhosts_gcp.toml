@@ -5,3 +5,16 @@
 ghost_visuals = 2					# 0 - Always show the entire car, 1 - always show the car as a ghost, 2 - only make the car a ghost when near it
 disable_props = false					# Removes all dynamic objects from the map
 nitro_option = 1					# 0 - none, 1 - normal, 2 - double, 3 - infinite
+
+[extras]
+view_replays = false					# View & spectate replays for a track, including inputs
+always_show_input_display = false			# Always show the replay input display, even when driving
+
+# Input display color scheme
+[input_display]
+highlight_r = 0
+highlight_g = 255
+highlight_b = 0
+background_r = 215
+background_g = 215
+background_b = 215

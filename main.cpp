@@ -1,11 +1,15 @@
 #include <windows.h>
+#include <d3d9.h>
+#include <d3dx9.h>
 #include "toml++/toml.hpp"
+
+#include "nya_dx9_hookbase.h"
 #include "nya_commonmath.h"
 #include "nya_commonhooklib.h"
 
 #include "game.h"
 
-const int nLocalReplayVersion = 2;
+const int nLocalReplayVersion = 3;
 
 enum eNitroType {
 	NITRO_NONE,
@@ -16,6 +20,8 @@ enum eNitroType {
 int nNitroType = NITRO_FULL;
 int nGhostVisuals = 2;
 bool bNoProps = false;
+bool bViewReplayMode = false;
+bool bShowInputsWhileDriving = false;
 
 void WriteLog(const std::string& str) {
 	static auto file = std::ofstream("FlatOut2TimeTrialGhosts_gcp.log");
@@ -77,10 +83,17 @@ struct tCarState {
 		car->mGearbox.nGear = gear;
 	}
 };
+
+struct tInputState {
+	uint8_t keys[20];
+};
+
 std::vector<tCarState> aRecordingGhost;
+std::vector<tInputState> aRecordingInputs;
 
 struct tGhostSetup {
 	std::vector<tCarState> aPBGhost;
+	std::vector<tInputState> aPBInputs;
 	uint32_t nPBTime = UINT_MAX;
 };
 tGhostSetup RollingLapPB;
@@ -91,11 +104,15 @@ bool bIsFirstLap = false;
 double fGhostTime = 0;
 double fGhostRecordTotalTime = 0;
 
+bool IsPlayerStaging(Player* pPlayer) {
+	return (pPlayer->nSomeFlags & 2) != 0;
+}
+
 bool ShouldGhostRun() {
 	auto localPlayer = GetPlayer(0);
 	if (!localPlayer) return false;
 	if (!GetPlayer(1)) return false;
-	if (localPlayer->nStagingEngineRev) return false;
+	if (IsPlayerStaging(localPlayer)) return false;
 	return true;
 }
 
@@ -146,10 +163,12 @@ void SavePB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
 	int count = ghost->aPBGhost.size();
 	outFile.write((char*)&count, sizeof(count));
 	outFile.write((char*)&ghost->aPBGhost[0], sizeof(ghost->aPBGhost[0]) * count);
+	outFile.write((char*)&ghost->aPBInputs[0], sizeof(ghost->aPBInputs[0]) * count);
 }
 
 void LoadPB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
 	ghost->aPBGhost.clear();
+	ghost->aPBInputs.clear();
 	ghost->nPBTime = INT_MAX;
 
 	auto fileName = GetGhostFilename(car, track, isFirstLap);
@@ -207,6 +226,14 @@ void LoadPB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
 		inFile.read((char*)&state, sizeof(state));
 		ghost->aPBGhost.push_back(state);
 	}
+	if (fileVersion >= 3) {
+		ghost->aPBInputs.reserve(count);
+		for (int i = 0; i < count; i++) {
+			tInputState state;
+			inFile.read((char*)&state, sizeof(state));
+			ghost->aPBInputs.push_back(state);
+		}
+	}
 }
 
 void ResetAndLoadPBGhost() {
@@ -222,9 +249,23 @@ void InvalidateGhost() {
 	fGhostRecordTotalTime = 0;
 	RollingLapPB.nPBTime = UINT_MAX;
 	RollingLapPB.aPBGhost.clear();
+	RollingLapPB.aPBInputs.clear();
 	StartingLapPB.nPBTime = UINT_MAX;
 	StartingLapPB.aPBGhost.clear();
+	StartingLapPB.aPBInputs.clear();
 	aRecordingGhost.clear();
+	aRecordingInputs.clear();
+}
+
+int GetCurrentPlaybackTick(tGhostSetup* ghost) {
+	double currTime = fGhostTime;
+	int tick = std::floor(100 * currTime);
+	if (tick > ghost->aPBGhost.size() - 1) tick = ghost->aPBGhost.size() - 1;
+	return tick;
+}
+
+void SetPlayerControl(bool on) {
+	NyaHookLib::Patch<uint32_t>(0x46F510, on ? 0x066C818B : 0xCC0004C2);
 }
 
 void RunGhost(Player* pPlayer) {
@@ -238,25 +279,54 @@ void RunGhost(Player* pPlayer) {
 	auto ghost = bIsFirstLap ? &StartingLapPB : &RollingLapPB;
 
 	if (ghost->aPBGhost.empty()) {
-		pPlayer->pCar->mMatrix.a4 = {0,-25,0};
+		if (!bViewReplayMode) pPlayer->pCar->mMatrix.a4 = {0,-25,0};
 		return;
 	}
 
-	double currTime = fGhostTime;
-	int tick = std::floor(100 * currTime);
+	if (bViewReplayMode) SetPlayerControl(false);
+	ghost->aPBGhost[GetCurrentPlaybackTick(ghost)].Apply(pPlayer);
+}
 
-	if (tick > ghost->aPBGhost.size() - 1) tick = ghost->aPBGhost.size() - 1;
-	ghost->aPBGhost[tick].Apply(pPlayer);
+uintptr_t GetAnalogInput_call = 0x55EA50;
+float __attribute__((naked)) __fastcall GetAnalogInputASM(Controller* pController, Controller::tInput* pInputStruct) {
+	__asm__ (
+		"mov eax, edx\n\t" // input struct ptr
+		"mov edx, ecx\n\t" // controller ptr
+		"call %0\n\t"
+		"ret\n\t"
+			:
+			:  "m" (GetAnalogInput_call)
+	);
+}
+
+tInputState RecordInputs(Player* pPlayer) {
+	static tInputState inputState;
+	memset(&inputState, 0, sizeof(inputState));
+	if (pPlayer->pController->_4[-1] == 0x67B920) {
+		for (int i = 0; i < 20; i++) {
+			auto value =  GetAnalogInputASM(pPlayer->pController, &pPlayer->pController->aInputs[i]) * 128;
+			if (value < 0) inputState.keys[i] = 0;
+			else inputState.keys[i] = value;
+		}
+	}
+	else {
+		for (int i = 0; i < 20; i++) {
+			inputState.keys[i] = pPlayer->pController->GetInputValue(i);
+		}
+	}
+	return inputState;
 }
 
 void RecordGhost(Player* pPlayer) {
 	if (!pPlayer) return;
+	if (!pPlayer->pController) return;
 
 	fGhostRecordTotalTime += 0.01;
 
 	tCarState state;
 	state.Collect(pPlayer);
 	aRecordingGhost.push_back(state);
+	aRecordingInputs.push_back(RecordInputs(pPlayer));
 }
 
 void SetGhostVisuals(bool on) {
@@ -265,6 +335,8 @@ void SetGhostVisuals(bool on) {
 
 void __fastcall ProcessGhostCar(Player* pPlayer) {
 	if (!pPlayer) return;
+
+	if (bViewReplayMode) SetPlayerControl(true);
 
 	auto localPlayer = GetPlayer(0);
 	auto ghostPlayer = GetPlayer(1);
@@ -292,28 +364,41 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 		if (nNitroType == NITRO_INFINITE) pPlayer->pCar->fNitro = 10;
 	}
 
-	if (nGhostVisuals == 2) {
+	if (nGhostVisuals == 2 && pPlayer == ghostPlayer) {
 		auto localPlayerPos = localPlayer->pCar->mMatrix.a4;
 		auto ghostPlayerPos = ghostPlayer->pCar->mMatrix.a4;
 		SetGhostVisuals((localPlayerPos - ghostPlayerPos).length() < 8);
 	}
 
-	if (localPlayer->nStagingEngineRev > 0) {
+	if (IsPlayerStaging(localPlayer)) {
 		InvalidateGhost();
 	}
 
 	if (ShouldGhostRun()) {
 		if (!bGhostLoaded) ResetAndLoadPBGhost();
 
-		if (pPlayer == ghostPlayer) RunGhost(pPlayer);
-		if (pPlayer == localPlayer) RecordGhost(pPlayer);
+		if (bViewReplayMode) {
+			if (pPlayer == localPlayer) RunGhost(pPlayer);
+			if (pPlayer == ghostPlayer) {
+				pPlayer->pCar->mMatrix.a4 = {0,-25,0};
+				pPlayer->pCar->vVelocity = {0,0,0};
+				pPlayer->pCar->vAngVelocity = {0,0,0};
+				pPlayer->pCar->fGasPedal = 0;
+				pPlayer->pCar->fBrakePedal = 0;
+				pPlayer->pCar->fHandbrake = 1;
+			}
+		}
+		else {
+			if (pPlayer == ghostPlayer) RunGhost(pPlayer);
+			if (pPlayer == localPlayer) RecordGhost(pPlayer);
+		}
 	}
 	else if (pPlayer == ghostPlayer) {
-		ghostPlayer->pCar->vVelocity = {0,0,0};
-		ghostPlayer->pCar->vAngVelocity = {0,0,0};
-		ghostPlayer->pCar->fGasPedal = 0;
-		ghostPlayer->pCar->fBrakePedal = 0;
-		ghostPlayer->pCar->fHandbrake = 1;
+		pPlayer->pCar->vVelocity = {0,0,0};
+		pPlayer->pCar->vAngVelocity = {0,0,0};
+		pPlayer->pCar->fGasPedal = 0;
+		pPlayer->pCar->fBrakePedal = 0;
+		pPlayer->pCar->fHandbrake = 1;
 	}
 }
 
@@ -345,14 +430,16 @@ void __attribute__((naked)) ProcessPlayerCarsASM() {
 
 void __fastcall OnFinishLap(uint32_t lapTime) {
 	auto ghost = bIsFirstLap ? &StartingLapPB : &RollingLapPB;
-	if (lapTime < ghost->nPBTime) {
+	if (!bViewReplayMode && lapTime < ghost->nPBTime) {
 		WriteLog("Saving new lap PB of " + std::to_string(lapTime) + "ms");
 		ghost->aPBGhost = aRecordingGhost;
+		ghost->aPBInputs = aRecordingInputs;
 		ghost->nPBTime = lapTime;
 		SavePB(ghost, GetPlayer(0)->nCarId, pGame->nLevelId, bIsFirstLap);
 	}
 	bIsFirstLap = false;
 	aRecordingGhost.clear();
+	aRecordingInputs.clear();
 	fGhostTime = 0;
 	fGhostRecordTotalTime = 0;
 }
@@ -401,6 +488,107 @@ const wchar_t* GetAIName() {
 	return L"PB GHOST";
 }
 
+auto gInputRGBBackground = NyaDrawing::CNyaRGBA32(215,215,215,255);
+auto gInputRGBHighlight = NyaDrawing::CNyaRGBA32(0,255,0,255);
+
+void DrawInputTriangle(float posX, float posY, float sizeX, float sizeY, float inputValue, bool invertValue) {
+	float minX = std::min(posX - sizeX, posX + sizeX);
+	float maxX = std::max(posX - sizeX, posX + sizeX);
+
+	DrawTriangle(posX, posY - sizeY, posX - sizeX, std::lerp(posY - sizeY, posY + sizeY, 0.5), posX,
+				 posY + sizeY, invertValue ? gInputRGBBackground : gInputRGBHighlight);
+
+	DrawTriangle(posX, posY - sizeY, posX - sizeX, std::lerp(posY - sizeY, posY + sizeY, 0.5), posX,
+				 posY + sizeY, invertValue ? gInputRGBHighlight : gInputRGBBackground, lerp(minX, maxX, inputValue), 0, 1, 1);
+}
+
+void DrawInputTriangleY(float posX, float posY, float sizeX, float sizeY, float inputValue, bool invertValue) {
+	float minY = std::min(posY - sizeY, posY + sizeY);
+	float maxY = std::max(posY - sizeY, posY + sizeY);
+
+	DrawTriangle(std::lerp(posX - sizeX, posX + sizeX, 0.5), posY - sizeY, posX - sizeX, posY + sizeY, posX + sizeX,
+				 posY + sizeY, invertValue ? gInputRGBBackground : gInputRGBHighlight);
+
+	DrawTriangle(std::lerp(posX - sizeX, posX + sizeX, 0.5), posY - sizeY, posX - sizeX, posY + sizeY, posX + sizeX,
+				 posY + sizeY, invertValue ? gInputRGBHighlight : gInputRGBBackground, 0, lerp(minY, maxY, inputValue), 1, 1);
+}
+
+void DrawInputRectangle(float posX, float posY, float scaleX, float scaleY, float inputValue) {
+	DrawRectangle(posX - scaleX, posX + scaleX, posY - scaleY, posY + scaleY, gInputRGBBackground);
+	DrawRectangle(posX - scaleX, posX + scaleX, lerp(posY + scaleY, posY - scaleY, inputValue), posY + scaleY, gInputRGBHighlight);
+}
+
+void DisplayInputs(tInputState* inputs) {
+	float fBaseXPosition = 0.2;
+	float fBaseYPosition = 0.85;
+
+	DrawInputTriangle((fBaseXPosition - 0.005) * GetAspectRatioInv(), fBaseYPosition, 0.08 * GetAspectRatioInv(), 0.07, 1 - (inputs->keys[INPUT_STEER_LEFT] / 128.0), true);
+	DrawInputTriangle((fBaseXPosition + 0.08) * GetAspectRatioInv(), fBaseYPosition, -0.08 * GetAspectRatioInv(), 0.07, inputs->keys[INPUT_STEER_RIGHT] / 128.0, false);
+	DrawInputTriangleY((fBaseXPosition + 0.0375) * GetAspectRatioInv(), fBaseYPosition - 0.05, 0.035 * GetAspectRatioInv(), 0.045, 1 - (inputs->keys[INPUT_ACCELERATE] / 128.0), true);
+	DrawInputTriangleY((fBaseXPosition + 0.0375) * GetAspectRatioInv(), fBaseYPosition + 0.05, 0.035 * GetAspectRatioInv(), -0.045, inputs->keys[INPUT_BRAKE] / 128.0, false);
+
+	DrawInputTriangleY((fBaseXPosition + 0.225) * GetAspectRatioInv(), fBaseYPosition - 0.04, 0.035 * GetAspectRatioInv(), 0.035, 1 - (inputs->keys[INPUT_GEAR_UP] / 128.0), true);
+	DrawInputTriangleY((fBaseXPosition + 0.225) * GetAspectRatioInv(), fBaseYPosition + 0.04, 0.035 * GetAspectRatioInv(), -0.035, inputs->keys[INPUT_GEAR_DOWN] / 128.0, false);
+
+	DrawInputRectangle((fBaseXPosition + 0.325) * GetAspectRatioInv(), fBaseYPosition + 0.05, 0.03 * GetAspectRatioInv(), 0.03, inputs->keys[INPUT_NITRO] / 128.0);
+	DrawInputRectangle((fBaseXPosition + 0.425) * GetAspectRatioInv(), fBaseYPosition + 0.05, 0.03 * GetAspectRatioInv(), 0.03, inputs->keys[INPUT_HANDBRAKE] / 128.0);
+	DrawInputRectangle((fBaseXPosition + 0.525) * GetAspectRatioInv(), fBaseYPosition + 0.05, 0.03 * GetAspectRatioInv(), 0.03, inputs->keys[INPUT_RESET] / 128.0);
+}
+
+void HookLoop() {
+	if (auto player = GetPlayer(0)) {
+		if (bViewReplayMode) {
+			auto ghost = bIsFirstLap ? &StartingLapPB : &RollingLapPB;
+			if (!ghost->aPBInputs.empty()) {
+				DisplayInputs(&ghost->aPBInputs[GetCurrentPlaybackTick(ghost)]);
+			}
+		}
+		else if (bShowInputsWhileDriving) {
+			auto inputs = RecordInputs(player);
+			DisplayInputs(&inputs);
+		}
+	}
+
+	CommonMain();
+}
+
+void UpdateD3DProperties() {
+	g_pd3dDevice = *(IDirect3DDevice9 **) 0x8DA788;
+	ghWnd = *(HWND*)0x8DA79C;
+	nResX = *(int*)0x6D68E8;
+	nResY = *(int*)0x6D68EC;
+}
+
+bool bDeviceJustReset = false;
+void D3DHookMain() {
+	if (!g_pd3dDevice) {
+		UpdateD3DProperties();
+		InitHookBase();
+	}
+
+	if (bDeviceJustReset) {
+		ImGui_ImplDX9_CreateDeviceObjects();
+		bDeviceJustReset = false;
+	}
+	HookBaseLoop();
+}
+
+auto EndSceneOrig = (HRESULT(__thiscall*)(void*))nullptr;
+HRESULT __fastcall EndSceneHook(void* a1) {
+	D3DHookMain();
+	return EndSceneOrig(a1);
+}
+
+auto D3DResetOrig = (void(*)())nullptr;
+void D3DResetHook() {
+	if (g_pd3dDevice) {
+		UpdateD3DProperties();
+		ImGui_ImplDX9_InvalidateDeviceObjects();
+		bDeviceJustReset = true;
+	}
+	return D3DResetOrig();
+}
+
 BOOL WINAPI DllMain(HINSTANCE, DWORD fdwReason, LPVOID) {
 	switch( fdwReason ) {
 		case DLL_PROCESS_ATTACH: {
@@ -410,12 +598,22 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD fdwReason, LPVOID) {
 				return TRUE;
 			}
 
-			aRecordingGhost.reserve(10000); // at 30fps this should be a few minutes?
+			// at 30fps this should be a few minutes?
+			aRecordingGhost.reserve(10000);
+			aRecordingInputs.reserve(10000);
 
 			auto config = toml::parse_file("FlatOut2TimeTrialGhosts_gcp.toml");
 			nGhostVisuals = config["main"]["ghost_visuals"].value_or(2);
 			bNoProps = config["main"]["disable_props"].value_or(false);
 			nNitroType = config["main"]["nitro_option"].value_or(NITRO_FULL);
+			bViewReplayMode = config["extras"]["view_replays"].value_or(false);
+			bShowInputsWhileDriving = config["extras"]["always_show_input_display"].value_or(false);
+			gInputRGBHighlight.r = config["input_display"]["highlight_r"].value_or(0);
+			gInputRGBHighlight.g = config["input_display"]["highlight_g"].value_or(255);
+			gInputRGBHighlight.b = config["input_display"]["highlight_b"].value_or(0);
+			gInputRGBBackground.r = config["input_display"]["background_r"].value_or(200);
+			gInputRGBBackground.g = config["input_display"]["background_g"].value_or(200);
+			gInputRGBBackground.b = config["input_display"]["background_b"].value_or(200);
 
 			ProcessGhostCarsASM_call = NyaHookLib::PatchRelative(NyaHookLib::CALL, 0x409440, &ProcessGhostCarsASM);
 			ProcessPlayerCarsASM_call = NyaHookLib::PatchRelative(NyaHookLib::CALL, 0x46D5E9, &ProcessPlayerCarsASM);
@@ -428,6 +626,12 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD fdwReason, LPVOID) {
 			NyaHookLib::Patch<uint8_t>(0x46C89A, 0xEB); // allow ai to ghost
 			NyaHookLib::Patch<uint8_t>(0x430FC1, 0xEB); // use regular skins for ai
 			NyaHookLib::Patch<uint8_t>(0x42FCB2, 0xEB); // use regular skins for ai
+
+			if (bShowInputsWhileDriving || bViewReplayMode) {
+				EndSceneOrig = (HRESULT(__thiscall *)(void *)) (*(uintptr_t *) 0x67D5A4);
+				NyaHookLib::Patch(0x67D5A4, &EndSceneHook);
+				D3DResetOrig = (void (*)()) NyaHookLib::PatchRelative(NyaHookLib::CALL, 0x5A621D, &D3DResetHook);
+			}
 
 			NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x409520, 0x40995E); // disable ai control
 			if (nGhostVisuals == 0) SetGhostVisuals(false);
