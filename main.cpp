@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <d3d9.h>
 #include <d3dx9.h>
+#include <codecvt>
 #include "toml++/toml.hpp"
 
 #include "nya_dx9_hookbase.h"
@@ -22,6 +23,9 @@ int nGhostVisuals = 2;
 bool bNoProps = false;
 bool bViewReplayMode = false;
 bool bShowInputsWhileDriving = false;
+bool bTimeTrialsEnabled = true;
+bool bPBTimeDisplayEnabled = true;
+bool bCurrentSessionPBTimeDisplayEnabled = true;
 
 void WriteLog(const std::string& str) {
 	static auto file = std::ofstream("FlatOut2TimeTrialGhosts_gcp.log");
@@ -95,9 +99,17 @@ struct tGhostSetup {
 	std::vector<tCarState> aPBGhost;
 	std::vector<tInputState> aPBInputs;
 	uint32_t nPBTime = UINT_MAX;
+	uint32_t nCurrentSessionPBTime = UINT_MAX;
+	float fTextHighlightTime = 0;
+	float fCurrentSessionTextHighlightTime = 0;
+
+	void UpdateTextHighlight() {
+		if (fTextHighlightTime > 0) fTextHighlightTime -= 0.01;
+		if (fCurrentSessionTextHighlightTime > 0) fCurrentSessionTextHighlightTime -= 0.01;
+	}
 };
 tGhostSetup RollingLapPB;
-tGhostSetup StartingLapPB;
+tGhostSetup StandingLapPB;
 
 bool bGhostLoaded = false;
 bool bIsFirstLap = false;
@@ -167,9 +179,21 @@ void SavePB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
 }
 
 void LoadPB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
+	// reset current session PBs if we're loading a different track/car combo
+	{
+		static int prevCar = -1;
+		static int prevTrack = -1;
+		if (prevCar != car || prevTrack != track) {
+			RollingLapPB.nCurrentSessionPBTime = UINT_MAX;
+			StandingLapPB.nCurrentSessionPBTime = UINT_MAX;
+		}
+		prevCar = car;
+		prevTrack = track;
+	}
+
 	ghost->aPBGhost.clear();
 	ghost->aPBInputs.clear();
-	ghost->nPBTime = INT_MAX;
+	ghost->nPBTime = UINT_MAX;
 
 	auto fileName = GetGhostFilename(car, track, isFirstLap);
 	auto inFile = std::ifstream(fileName, std::ios::in | std::ios::binary);
@@ -237,7 +261,7 @@ void LoadPB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
 }
 
 void ResetAndLoadPBGhost() {
-	LoadPB(&StartingLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, true);
+	LoadPB(&StandingLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, true);
 	LoadPB(&RollingLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, false);
 	bGhostLoaded = true;
 }
@@ -250,9 +274,9 @@ void InvalidateGhost() {
 	RollingLapPB.nPBTime = UINT_MAX;
 	RollingLapPB.aPBGhost.clear();
 	RollingLapPB.aPBInputs.clear();
-	StartingLapPB.nPBTime = UINT_MAX;
-	StartingLapPB.aPBGhost.clear();
-	StartingLapPB.aPBInputs.clear();
+	StandingLapPB.nPBTime = UINT_MAX;
+	StandingLapPB.aPBGhost.clear();
+	StandingLapPB.aPBInputs.clear();
 	aRecordingGhost.clear();
 	aRecordingInputs.clear();
 }
@@ -276,7 +300,7 @@ void RunGhost(Player* pPlayer) {
 
 	fGhostTime += 0.01;
 
-	auto ghost = bIsFirstLap ? &StartingLapPB : &RollingLapPB;
+	auto ghost = bIsFirstLap ? &StandingLapPB : &RollingLapPB;
 
 	if (ghost->aPBGhost.empty()) {
 		if (!bViewReplayMode) pPlayer->pCar->mMatrix.a4 = {0,-25,0};
@@ -341,6 +365,11 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 	auto localPlayer = GetPlayer(0);
 	auto ghostPlayer = GetPlayer(1);
 	if (!localPlayer || !ghostPlayer) return;
+
+	if (pPlayer == localPlayer) {
+		RollingLapPB.UpdateTextHighlight();
+		StandingLapPB.UpdateTextHighlight();
+	}
 
 	switch (nNitroType) {
 		case NITRO_NONE:
@@ -429,13 +458,20 @@ void __attribute__((naked)) ProcessPlayerCarsASM() {
 }
 
 void __fastcall OnFinishLap(uint32_t lapTime) {
-	auto ghost = bIsFirstLap ? &StartingLapPB : &RollingLapPB;
-	if (!bViewReplayMode && lapTime < ghost->nPBTime) {
-		WriteLog("Saving new lap PB of " + std::to_string(lapTime) + "ms");
-		ghost->aPBGhost = aRecordingGhost;
-		ghost->aPBInputs = aRecordingInputs;
-		ghost->nPBTime = lapTime;
-		SavePB(ghost, GetPlayer(0)->nCarId, pGame->nLevelId, bIsFirstLap);
+	auto ghost = bIsFirstLap ? &StandingLapPB : &RollingLapPB;
+	if (!bViewReplayMode) {
+		if (lapTime < ghost->nPBTime) {
+			WriteLog("Saving new lap PB of " + std::to_string(lapTime) + "ms");
+			ghost->aPBGhost = aRecordingGhost;
+			ghost->aPBInputs = aRecordingInputs;
+			ghost->nPBTime = lapTime;
+			ghost->fTextHighlightTime = 5;
+			SavePB(ghost, GetPlayer(0)->nCarId, pGame->nLevelId, bIsFirstLap);
+		}
+		if (lapTime < ghost->nCurrentSessionPBTime) {
+			ghost->nCurrentSessionPBTime = lapTime;
+			ghost->fCurrentSessionTextHighlightTime = 5;
+		}
 	}
 	bIsFirstLap = false;
 	aRecordingGhost.clear();
@@ -490,6 +526,8 @@ const wchar_t* GetAIName() {
 
 auto gInputRGBBackground = NyaDrawing::CNyaRGBA32(215,215,215,255);
 auto gInputRGBHighlight = NyaDrawing::CNyaRGBA32(0,255,0,255);
+float fInputBaseXPosition = 0.2;
+float fInputBaseYPosition = 0.85;
 
 void DrawInputTriangle(float posX, float posY, float sizeX, float sizeY, float inputValue, bool invertValue) {
 	float minX = std::min(posX - sizeX, posX + sizeX);
@@ -519,26 +557,53 @@ void DrawInputRectangle(float posX, float posY, float scaleX, float scaleY, floa
 }
 
 void DisplayInputs(tInputState* inputs) {
-	float fBaseXPosition = 0.2;
-	float fBaseYPosition = 0.85;
+	DrawInputTriangle((fInputBaseXPosition - 0.005) * GetAspectRatioInv(), fInputBaseYPosition, 0.08 * GetAspectRatioInv(), 0.07, 1 - (inputs->keys[INPUT_STEER_LEFT] / 128.0), true);
+	DrawInputTriangle((fInputBaseXPosition + 0.08) * GetAspectRatioInv(), fInputBaseYPosition, -0.08 * GetAspectRatioInv(), 0.07, inputs->keys[INPUT_STEER_RIGHT] / 128.0, false);
+	DrawInputTriangleY((fInputBaseXPosition + 0.0375) * GetAspectRatioInv(), fInputBaseYPosition - 0.05, 0.035 * GetAspectRatioInv(), 0.045, 1 - (inputs->keys[INPUT_ACCELERATE] / 128.0), true);
+	DrawInputTriangleY((fInputBaseXPosition + 0.0375) * GetAspectRatioInv(), fInputBaseYPosition + 0.05, 0.035 * GetAspectRatioInv(), -0.045, inputs->keys[INPUT_BRAKE] / 128.0, false);
 
-	DrawInputTriangle((fBaseXPosition - 0.005) * GetAspectRatioInv(), fBaseYPosition, 0.08 * GetAspectRatioInv(), 0.07, 1 - (inputs->keys[INPUT_STEER_LEFT] / 128.0), true);
-	DrawInputTriangle((fBaseXPosition + 0.08) * GetAspectRatioInv(), fBaseYPosition, -0.08 * GetAspectRatioInv(), 0.07, inputs->keys[INPUT_STEER_RIGHT] / 128.0, false);
-	DrawInputTriangleY((fBaseXPosition + 0.0375) * GetAspectRatioInv(), fBaseYPosition - 0.05, 0.035 * GetAspectRatioInv(), 0.045, 1 - (inputs->keys[INPUT_ACCELERATE] / 128.0), true);
-	DrawInputTriangleY((fBaseXPosition + 0.0375) * GetAspectRatioInv(), fBaseYPosition + 0.05, 0.035 * GetAspectRatioInv(), -0.045, inputs->keys[INPUT_BRAKE] / 128.0, false);
+	DrawInputTriangleY((fInputBaseXPosition + 0.225) * GetAspectRatioInv(), fInputBaseYPosition - 0.04, 0.035 * GetAspectRatioInv(), 0.035, 1 - (inputs->keys[INPUT_GEAR_UP] / 128.0), true);
+	DrawInputTriangleY((fInputBaseXPosition + 0.225) * GetAspectRatioInv(), fInputBaseYPosition + 0.04, 0.035 * GetAspectRatioInv(), -0.035, inputs->keys[INPUT_GEAR_DOWN] / 128.0, false);
 
-	DrawInputTriangleY((fBaseXPosition + 0.225) * GetAspectRatioInv(), fBaseYPosition - 0.04, 0.035 * GetAspectRatioInv(), 0.035, 1 - (inputs->keys[INPUT_GEAR_UP] / 128.0), true);
-	DrawInputTriangleY((fBaseXPosition + 0.225) * GetAspectRatioInv(), fBaseYPosition + 0.04, 0.035 * GetAspectRatioInv(), -0.035, inputs->keys[INPUT_GEAR_DOWN] / 128.0, false);
+	DrawInputRectangle((fInputBaseXPosition + 0.325) * GetAspectRatioInv(), fInputBaseYPosition + 0.05, 0.03 * GetAspectRatioInv(), 0.03, inputs->keys[INPUT_NITRO] / 128.0);
+	DrawInputRectangle((fInputBaseXPosition + 0.425) * GetAspectRatioInv(), fInputBaseYPosition + 0.05, 0.03 * GetAspectRatioInv(), 0.03, inputs->keys[INPUT_HANDBRAKE] / 128.0);
+	DrawInputRectangle((fInputBaseXPosition + 0.525) * GetAspectRatioInv(), fInputBaseYPosition + 0.05, 0.03 * GetAspectRatioInv(), 0.03, inputs->keys[INPUT_RESET] / 128.0);
+}
 
-	DrawInputRectangle((fBaseXPosition + 0.325) * GetAspectRatioInv(), fBaseYPosition + 0.05, 0.03 * GetAspectRatioInv(), 0.03, inputs->keys[INPUT_NITRO] / 128.0);
-	DrawInputRectangle((fBaseXPosition + 0.425) * GetAspectRatioInv(), fBaseYPosition + 0.05, 0.03 * GetAspectRatioInv(), 0.03, inputs->keys[INPUT_HANDBRAKE] / 128.0);
-	DrawInputRectangle((fBaseXPosition + 0.525) * GetAspectRatioInv(), fBaseYPosition + 0.05, 0.03 * GetAspectRatioInv(), 0.03, inputs->keys[INPUT_RESET] / 128.0);
+void DrawStringFO2(tNyaStringData data, const wchar_t* string, const char* font) {
+	auto pFont = Font::GetFont(*(void**)(0x8E8434), font);
+	pFont->fScaleX = data.size * nResX;
+	pFont->fScaleY = data.size * nResY;
+	pFont->bXRightAlign = data.XRightAlign;
+	pFont->bXCenterAlign = data.XCenterAlign;
+	pFont->nColor.r = data.r;
+	pFont->nColor.g = data.g;
+	pFont->nColor.b = data.b;
+	pFont->nColor.a = data.a;
+	pFont->fScaleX *= GetAspectRatioInv();
+	Font::Display(pFont, data.x * nResX, data.y * nResY, string);
+}
+
+void DrawTimeText(tNyaStringData& data, const std::string& name, uint32_t pbTime, bool isTextHighlighted) {
+	std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+	std::string bestTimeString = name;
+	if (pbTime == UINT_MAX) {
+		bestTimeString += "N/A";
+	}
+	else {
+		if (isTextHighlighted) data.SetColor(0, 255, 0, 255);
+		else data.SetColor(255, 255, 255, 255);
+		bestTimeString += GetTimeFromMilliseconds(pbTime);
+		bestTimeString.pop_back(); // remove trailing 0, the game has a tickrate of 100fps
+	}
+	DrawStringFO2(data, converter.from_bytes(bestTimeString).c_str(), "FontLarge");
+	data.y += 0.04;
 }
 
 void HookLoop() {
 	if (auto player = GetPlayer(0)) {
 		if (bViewReplayMode) {
-			auto ghost = bIsFirstLap ? &StartingLapPB : &RollingLapPB;
+			auto ghost = bIsFirstLap ? &StandingLapPB : &RollingLapPB;
 			if (!ghost->aPBInputs.empty()) {
 				DisplayInputs(&ghost->aPBInputs[GetCurrentPlaybackTick(ghost)]);
 			}
@@ -546,6 +611,27 @@ void HookLoop() {
 		else if (bShowInputsWhileDriving) {
 			auto inputs = RecordInputs(player);
 			DisplayInputs(&inputs);
+		}
+
+		if (bTimeTrialsEnabled && (bPBTimeDisplayEnabled || bCurrentSessionPBTimeDisplayEnabled) && !IsPlayerStaging(player)) {
+			tNyaStringData data;
+			//data.x = 0.5;
+			//data.y = 0.21;
+			//data.XCenterAlign = true;
+			data.x = 1 - (0.05 * GetAspectRatioInv());
+			data.y = 0.17;
+			data.size = 0.002;
+			data.XRightAlign = true;
+			if (bPBTimeDisplayEnabled) {
+				DrawTimeText(data, "Rolling PB: ", RollingLapPB.nPBTime, RollingLapPB.fTextHighlightTime);
+				DrawTimeText(data, "Standing PB: ", StandingLapPB.nPBTime, StandingLapPB.fTextHighlightTime);
+			}
+			if (bCurrentSessionPBTimeDisplayEnabled) {
+				DrawTimeText(data, "Rolling PB (Session): ", RollingLapPB.nCurrentSessionPBTime,
+							 RollingLapPB.fCurrentSessionTextHighlightTime > 0);
+				DrawTimeText(data, "Standing PB (Session): ", StandingLapPB.nCurrentSessionPBTime,
+							 StandingLapPB.fCurrentSessionTextHighlightTime > 0);
+			}
 		}
 	}
 
@@ -603,9 +689,12 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD fdwReason, LPVOID) {
 			aRecordingInputs.reserve(10000);
 
 			auto config = toml::parse_file("FlatOut2TimeTrialGhosts_gcp.toml");
+			bTimeTrialsEnabled = config["main"]["enabled"].value_or(true);
 			nGhostVisuals = config["main"]["ghost_visuals"].value_or(2);
 			bNoProps = config["main"]["disable_props"].value_or(false);
 			nNitroType = config["main"]["nitro_option"].value_or(NITRO_FULL);
+			bPBTimeDisplayEnabled = config["main"]["show_best_times"].value_or(true);
+			bCurrentSessionPBTimeDisplayEnabled = config["main"]["show_best_times_in_session"].value_or(true);
 			bViewReplayMode = config["extras"]["view_replays"].value_or(false);
 			bShowInputsWhileDriving = config["extras"]["always_show_input_display"].value_or(false);
 			gInputRGBHighlight.r = config["input_display"]["highlight_r"].value_or(0);
@@ -614,30 +703,39 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD fdwReason, LPVOID) {
 			gInputRGBBackground.r = config["input_display"]["background_r"].value_or(200);
 			gInputRGBBackground.g = config["input_display"]["background_g"].value_or(200);
 			gInputRGBBackground.b = config["input_display"]["background_b"].value_or(200);
+			fInputBaseXPosition = config["input_display"]["pos_x"].value_or(0.2);
+			fInputBaseYPosition = config["input_display"]["pos_y"].value_or(0.85);
 
-			ProcessGhostCarsASM_call = NyaHookLib::PatchRelative(NyaHookLib::CALL, 0x409440, &ProcessGhostCarsASM);
-			ProcessPlayerCarsASM_call = NyaHookLib::PatchRelative(NyaHookLib::CALL, 0x46D5E9, &ProcessPlayerCarsASM);
-			NyaHookLib::PatchRelative(NyaHookLib::CALL, 0x45D9C7, &GetAIName);
-			NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x47CDAB, &FinishLapASM);
-			NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x408A54, &AISameCarASM);
-			NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x45DBFF, &GetPlayerCarASM);
-			NyaHookLib::Fill(0x4DE31D, 0x90, 16);
-			NyaHookLib::Patch<uint8_t>(0x45CD01 + 1, 1); // only spawn one ai
-			NyaHookLib::Patch<uint8_t>(0x46C89A, 0xEB); // allow ai to ghost
-			NyaHookLib::Patch<uint8_t>(0x430FC1, 0xEB); // use regular skins for ai
-			NyaHookLib::Patch<uint8_t>(0x42FCB2, 0xEB); // use regular skins for ai
+			if (bTimeTrialsEnabled) {
+				ProcessGhostCarsASM_call = NyaHookLib::PatchRelative(NyaHookLib::CALL, 0x409440, &ProcessGhostCarsASM);
+				ProcessPlayerCarsASM_call = NyaHookLib::PatchRelative(NyaHookLib::CALL, 0x46D5E9, &ProcessPlayerCarsASM);
+				NyaHookLib::PatchRelative(NyaHookLib::CALL, 0x45D9C7, &GetAIName);
+				NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x47CDAB, &FinishLapASM);
+				NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x408A54, &AISameCarASM);
+				NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x45DBFF, &GetPlayerCarASM);
+				NyaHookLib::Fill(0x4DE31D, 0x90, 16);
+				NyaHookLib::Patch<uint8_t>(0x45CD01 + 1, 1); // only spawn one ai
+				NyaHookLib::Patch<uint8_t>(0x46C89A, 0xEB); // allow ai to ghost
+				NyaHookLib::Patch<uint8_t>(0x430FC1, 0xEB); // use regular skins for ai
+				NyaHookLib::Patch<uint8_t>(0x42FCB2, 0xEB); // use regular skins for ai
 
-			if (bShowInputsWhileDriving || bViewReplayMode) {
+				NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x409520, 0x40995E); // disable ai control
+				if (nGhostVisuals == 0) SetGhostVisuals(false);
+				if (bNoProps) {
+					NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x59438C, 0x594421);
+					NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x593BD0, 0x593C6F);
+				}
+			}
+			else {
+				bPBTimeDisplayEnabled = false;
+				bCurrentSessionPBTimeDisplayEnabled = false;
+				bViewReplayMode = false;
+			}
+
+			if (bShowInputsWhileDriving || bViewReplayMode || bPBTimeDisplayEnabled || bCurrentSessionPBTimeDisplayEnabled) {
 				EndSceneOrig = (HRESULT(__thiscall *)(void *)) (*(uintptr_t *) 0x67D5A4);
 				NyaHookLib::Patch(0x67D5A4, &EndSceneHook);
 				D3DResetOrig = (void (*)()) NyaHookLib::PatchRelative(NyaHookLib::CALL, 0x5A621D, &D3DResetHook);
-			}
-
-			NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x409520, 0x40995E); // disable ai control
-			if (nGhostVisuals == 0) SetGhostVisuals(false);
-			if (bNoProps) {
-				NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x59438C, 0x594421);
-				NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x593BD0, 0x593C6F);
 			}
 		} break;
 		default:

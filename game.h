@@ -133,6 +133,23 @@ public:
 };
 auto& pGame = *(tGameMain**)0x8E8410;
 
+class Font {
+public:
+	uint8_t _0[0x4];
+	NyaDrawing::CNyaRGBA32 nColor;
+	uint8_t _8[0x2C];
+	struct {
+		bool bXCenterAlign : 1;
+		bool bXRightAlign : 1;
+	};
+	uint8_t _38[0x14];
+	float fScaleX;
+	float fScaleY;
+
+	static inline auto GetFont = (Font*(__stdcall*)(void*, const char*))0x451840;
+	static inline auto Display = (void(*)(Font*, float, float, const wchar_t*, ...))0x54E820;
+};
+
 Player* GetPlayer(int id) {
 	auto host = pGame->pHost;
 	if (!host) return nullptr;

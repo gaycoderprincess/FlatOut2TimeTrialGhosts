@@ -2,16 +2,21 @@
 # enjoy, nya~ :3
 
 [main]
+enabled = true						# Set this to false to disable the time trial mode & ghosts, useful if you only want the input display
 ghost_visuals = 2					# 0 - Always show the entire car, 1 - always show the car as a ghost, 2 - only make the car a ghost when near it
 disable_props = false					# Removes all dynamic objects from the map
 nitro_option = 1					# 0 - none, 1 - normal, 2 - double, 3 - infinite
+show_best_times = true					# Displays the best lap times you've ever achieved for a track on the top right in-game
+show_best_times_in_session = true			# Displays the best lap times you've achieved in the current session on the top right in-game
 
 [extras]
 view_replays = false					# View & spectate replays for a track, including inputs
 always_show_input_display = false			# Always show the replay input display, even when driving
 
-# Input display color scheme
+# Input display position & color scheme
 [input_display]
+pos_x = 0.2
+pos_y = 0.85
 highlight_r = 0
 highlight_g = 255
 highlight_b = 0
