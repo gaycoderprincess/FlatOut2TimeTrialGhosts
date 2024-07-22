@@ -2,7 +2,7 @@
 
 Plugin to add a time trial mode with laptime replay ghosts to FlatOut 2
 
-![preview 1](https://i.imgur.com/NwciFsX.png)
+![preview 1](https://i.imgur.com/2fx1odz.png)
 ![preview 2](https://i.imgur.com/NzHPEbG.png)
 
 ## Installation
