@@ -510,7 +510,7 @@ void DrawInputTriangleY(float posX, float posY, float sizeX, float sizeY, float 
 				 posY + sizeY, invertValue ? gInputRGBBackground : gInputRGBHighlight);
 
 	DrawTriangle(std::lerp(posX - sizeX, posX + sizeX, 0.5), posY - sizeY, posX - sizeX, posY + sizeY, posX + sizeX,
-				 posY + sizeY, invertValue ? gInputRGBHighlight : gInputRGBBackground, 0, lerp(minY, maxY, inputValue), 1, 1);
+				 posY + sizeY, invertValue ? gInputRGBHighlight : gInputRGBBackground, 0, lerp(minY, maxY + 0.001, inputValue), 1, 1);
 }
 
 void DrawInputRectangle(float posX, float posY, float scaleX, float scaleY, float inputValue) {
