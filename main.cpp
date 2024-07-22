@@ -186,6 +186,8 @@ void LoadPB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
 		if (prevCar != car || prevTrack != track) {
 			RollingLapPB.nCurrentSessionPBTime = UINT_MAX;
 			StandingLapPB.nCurrentSessionPBTime = UINT_MAX;
+			RollingLapPB.fCurrentSessionTextHighlightTime = 0;
+			StandingLapPB.fCurrentSessionTextHighlightTime = 0;
 		}
 		prevCar = car;
 		prevTrack = track;
@@ -194,6 +196,7 @@ void LoadPB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
 	ghost->aPBGhost.clear();
 	ghost->aPBInputs.clear();
 	ghost->nPBTime = UINT_MAX;
+	ghost->fTextHighlightTime = 0;
 
 	auto fileName = GetGhostFilename(car, track, isFirstLap);
 	auto inFile = std::ifstream(fileName, std::ios::in | std::ios::binary);
@@ -272,9 +275,11 @@ void InvalidateGhost() {
 	fGhostTime = 0;
 	fGhostRecordTotalTime = 0;
 	RollingLapPB.nPBTime = UINT_MAX;
+	RollingLapPB.fTextHighlightTime = 0;
 	RollingLapPB.aPBGhost.clear();
 	RollingLapPB.aPBInputs.clear();
 	StandingLapPB.nPBTime = UINT_MAX;
+	StandingLapPB.fTextHighlightTime = 0;
 	StandingLapPB.aPBGhost.clear();
 	StandingLapPB.aPBInputs.clear();
 	aRecordingGhost.clear();
@@ -623,8 +628,8 @@ void HookLoop() {
 			data.size = 0.002;
 			data.XRightAlign = true;
 			if (bPBTimeDisplayEnabled) {
-				DrawTimeText(data, "Rolling PB: ", RollingLapPB.nPBTime, RollingLapPB.fTextHighlightTime);
-				DrawTimeText(data, "Standing PB: ", StandingLapPB.nPBTime, StandingLapPB.fTextHighlightTime);
+				DrawTimeText(data, "Rolling PB: ", RollingLapPB.nPBTime, RollingLapPB.fTextHighlightTime > 0);
+				DrawTimeText(data, "Standing PB: ", StandingLapPB.nPBTime, StandingLapPB.fTextHighlightTime > 0);
 			}
 			if (bCurrentSessionPBTimeDisplayEnabled) {
 				DrawTimeText(data, "Rolling PB (Session): ", RollingLapPB.nCurrentSessionPBTime,
