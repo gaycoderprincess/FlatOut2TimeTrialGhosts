@@ -7,6 +7,8 @@ enum eNitroType {
 	NITRO_INFINITE,
 };
 int nNitroType = NITRO_FULL;
+int nUpgradeLevel = 0;
+int nHandlingMode = 0;
 int nGhostVisuals = 2;
 bool bNoProps = false;
 bool bViewReplayMode = false;
@@ -14,9 +16,14 @@ bool bShowInputsWhileDriving = false;
 bool bTimeTrialsEnabled = true;
 bool bPBTimeDisplayEnabled = true;
 bool bCurrentSessionPBTimeDisplayEnabled = true;
+bool bChloeCollectionIntegration = false;
 
 void WriteLog(const std::string& str) {
+#ifdef FLATOUT_UC
+	static auto file = std::ofstream("FlatOutUCTimeTrialGhosts_gcp.log");
+#else
 	static auto file = std::ofstream("FlatOut2TimeTrialGhosts_gcp.log");
+#endif
 
 	file << str;
 	file << "\n";
@@ -136,6 +143,12 @@ std::string GetGhostFilename(int car, int track, bool isFirstLap) {
 			break;
 		default:
 			break;
+	}
+	if (nUpgradeLevel) {
+		path += "_upgrade" + std::to_string(nUpgradeLevel);
+	}
+	if (nHandlingMode) {
+		path += "_handling" + std::to_string(nHandlingMode);
 	}
 	path += ".fo2replay";
 	return path;
@@ -502,6 +515,13 @@ void DrawTimeText(tNyaStringData& data, const std::string& name, uint32_t pbTime
 }
 
 void HookLoop() {
+#ifdef FLATOUT_UC
+	if (pLoadingScreen) {
+		CommonMain();
+		return;
+	}
+#endif
+
 	if (auto player = GetPlayer(0)) {
 #ifndef FLATOUT_UC
 		if (bViewReplayMode) {
@@ -540,6 +560,21 @@ void HookLoop() {
 			}
 		}
 	}
+
+#ifdef FLATOUT_UC
+	// uninit time trials once we're back in the menu
+	if (bChloeCollectionIntegration && pGame) {
+		static auto nLastGameState = pGame->nGameState;
+		auto currentGameState = pGame->nGameState;
+		if (currentGameState != nLastGameState) {
+			if (currentGameState == GAME_STATE_MENU && bTimeTrialsEnabled) {
+				UninitTimeTrials();
+				bTimeTrialsEnabled = false;
+			}
+			nLastGameState = currentGameState;
+		}
+	}
+#endif
 
 	CommonMain();
 }
