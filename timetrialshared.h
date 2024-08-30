@@ -53,7 +53,9 @@ struct tCarState {
 		brake = car->fBrakePedal;
 		nitroHeld = car->fNitroButton;
 		handbrake = car->fHandbrake;
+#ifndef FLATOUT_UC
 		gear = car->mGearbox.nGear;
+#endif
 	}
 
 	void Apply(Player* pPlayer) {
@@ -72,7 +74,9 @@ struct tCarState {
 		car->fBrakePedal = brake;
 		car->fNitroButton = nitroHeld;
 		car->fHandbrake = handbrake;
+#ifndef FLATOUT_UC
 		car->mGearbox.nGear = gear;
+#endif
 	}
 };
 
@@ -303,6 +307,7 @@ void RunGhost(Player* pPlayer) {
 tInputState RecordInputs(Player* pPlayer) {
 	static tInputState inputState;
 	memset(&inputState, 0, sizeof(inputState));
+#ifndef FLATOUT_UC
 	if (pPlayer->pController->_4[-1] == pControllerVTable) {
 		for (int i = 0; i < 20; i++) {
 			auto value =  GetAnalogInput(pPlayer->pController, &pPlayer->pController->aInputs[i]) * 128;
@@ -315,12 +320,15 @@ tInputState RecordInputs(Player* pPlayer) {
 			inputState.keys[i] = pPlayer->pController->GetInputValue(i);
 		}
 	}
+#endif
 	return inputState;
 }
 
 void RecordGhost(Player* pPlayer) {
 	if (!pPlayer) return;
+#ifndef FLATOUT_UC
 	if (!pPlayer->pController) return;
+#endif
 
 	fGhostRecordTotalTime += 0.01;
 
@@ -495,6 +503,7 @@ void DrawTimeText(tNyaStringData& data, const std::string& name, uint32_t pbTime
 
 void HookLoop() {
 	if (auto player = GetPlayer(0)) {
+#ifndef FLATOUT_UC
 		if (bViewReplayMode) {
 			auto ghost = bIsFirstLap ? &StandingLapPB : &RollingLapPB;
 			if (!ghost->aPBInputs.empty()) {
@@ -505,6 +514,7 @@ void HookLoop() {
 			auto inputs = RecordInputs(player);
 			DisplayInputs(&inputs);
 		}
+#endif
 
 		if (bTimeTrialsEnabled && (bPBTimeDisplayEnabled || bCurrentSessionPBTimeDisplayEnabled) && !IsPlayerStaging(player)) {
 			tNyaStringData data;
@@ -513,7 +523,10 @@ void HookLoop() {
 			//data.XCenterAlign = true;
 			data.x = 1 - (0.05 * GetAspectRatioInv());
 			data.y = 0.17;
-			data.size = 0.002;
+#ifdef FLATOUT_UC
+			data.y += 0.06;
+#endif
+			data.size = 0.04;
 			data.XRightAlign = true;
 			if (bPBTimeDisplayEnabled) {
 				DrawTimeText(data, "Rolling PB: ", RollingLapPB.nPBTime, RollingLapPB.fTextHighlightTime > 0);
@@ -536,7 +549,11 @@ void InitAndReadConfigFile() {
 	aRecordingGhost.reserve(10000);
 	aRecordingInputs.reserve(10000);
 
+#ifdef FLATOUT_UC
+	auto config = toml::parse_file("FlatOutUCTimeTrialGhosts_gcp.toml");
+#else
 	auto config = toml::parse_file("FlatOut2TimeTrialGhosts_gcp.toml");
+#endif
 	bTimeTrialsEnabled = config["main"]["enabled"].value_or(true);
 	nGhostVisuals = config["main"]["ghost_visuals"].value_or(2);
 	bNoProps = config["main"]["disable_props"].value_or(false);

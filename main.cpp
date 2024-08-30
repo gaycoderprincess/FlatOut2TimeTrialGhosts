@@ -65,6 +65,7 @@ void __attribute__((naked)) FinishLapASM() {
 		"call %1\n\t"
 		"popad\n\t"
 		"mov ecx, 0x8E8410\n\t"
+		"mov ecx, [ecx]\n\t"
 		"jmp %0\n\t"
 			:
 			:  "m" (FinishLapASM_jmp), "i" (OnFinishLap)

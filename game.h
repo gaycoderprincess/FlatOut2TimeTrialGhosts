@@ -167,8 +167,8 @@ Player* GetPlayer(int id) {
 
 void DrawStringFO2(tNyaStringData data, const wchar_t* string, const char* font) {
 	auto pFont = Font::GetFont(*(void**)(0x8E8434), font);
-	pFont->fScaleX = data.size * nResX;
-	pFont->fScaleY = data.size * nResY;
+	pFont->fScaleX = data.size * nResX / 20.0;
+	pFont->fScaleY = data.size * nResY / 20.0;
 	pFont->bXRightAlign = data.XRightAlign;
 	pFont->bXCenterAlign = data.XCenterAlign;
 	pFont->nColor.r = data.r;
