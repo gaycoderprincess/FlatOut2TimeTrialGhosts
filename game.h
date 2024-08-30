@@ -47,6 +47,7 @@ enum eControllerInput {
 	INPUT_LOOK_BEHIND = 4,
 	INPUT_RESET = 5,
 	INPUT_PLAYERLIST = 7,
+	INPUT_MENU_ACCEPT = 8,
 	INPUT_PAUSE = 9,
 	INPUT_ACCELERATE = 10,
 	INPUT_BRAKE = 11,
@@ -76,6 +77,10 @@ public:
 	virtual void _vf9() = 0;
 	virtual void _vf10() = 0;
 	virtual int GetInputValue(int input) = 0;
+};
+
+enum ePlayerEvent {
+	PLAYEREVENT_RESPAWN_GHOST = 6036,
 };
 
 class Player {
@@ -120,7 +125,7 @@ public:
 	Player** aPlayers;
 };
 
-class tGameMain {
+class Game {
 public:
 	uint8_t _0[0x480];
 	int nLevelId;			// +480
@@ -131,7 +136,7 @@ public:
 	uint8_t _4A8[0x510];
 	PlayerHost* pHost;		// +9B8
 };
-auto& pGame = *(tGameMain**)0x8E8410;
+auto& pGame = *(Game**)0x8E8410;
 
 class Font {
 public:
@@ -158,4 +163,18 @@ Player* GetPlayer(int id) {
 	auto ply = players[id];
 	if (!ply || !ply->pCar) return nullptr;
 	return ply;
+}
+
+void DrawStringFO2(tNyaStringData data, const wchar_t* string, const char* font) {
+	auto pFont = Font::GetFont(*(void**)(0x8E8434), font);
+	pFont->fScaleX = data.size * nResX;
+	pFont->fScaleY = data.size * nResY;
+	pFont->bXRightAlign = data.XRightAlign;
+	pFont->bXCenterAlign = data.XCenterAlign;
+	pFont->nColor.r = data.r;
+	pFont->nColor.g = data.g;
+	pFont->nColor.b = data.b;
+	pFont->nColor.a = data.a;
+	pFont->fScaleX *= GetAspectRatioInv();
+	Font::Display(pFont, data.x * nResX, data.y * nResY, string);
 }
