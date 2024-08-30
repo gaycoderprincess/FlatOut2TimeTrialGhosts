@@ -1,4 +1,4 @@
-const int nLocalReplayVersion = 3;
+const int nLocalReplayVersion = 4;
 
 enum eNitroType {
 	NITRO_NONE,
@@ -17,6 +17,14 @@ bool bTimeTrialsEnabled = true;
 bool bPBTimeDisplayEnabled = true;
 bool bCurrentSessionPBTimeDisplayEnabled = true;
 bool bChloeCollectionIntegration = false;
+bool bLastRaceWasTimeTrial = false;
+bool bReplayIgnoreMismatches = false;
+
+#ifdef FLATOUT_UC
+bool bTimeTrialIsFOUC = true;
+#else
+bool bTimeTrialIsFOUC = false;
+#endif
 
 void WriteLog(const std::string& str) {
 #ifdef FLATOUT_UC
@@ -150,6 +158,9 @@ std::string GetGhostFilename(int car, int track, bool isFirstLap) {
 	if (nHandlingMode) {
 		path += "_handling" + std::to_string(nHandlingMode);
 	}
+#ifdef FLATOUT_UC
+	path += "_fouc";
+#endif
 	path += ".fo2replay";
 	return path;
 }
@@ -177,6 +188,9 @@ void SavePB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
 	outFile.write((char*)&nNitroType, sizeof(nNitroType));
 	outFile.write((char*)&isFirstLap, sizeof(isFirstLap));
 	outFile.write((char*)&bNoProps, sizeof(bNoProps));
+	outFile.write((char*)&nUpgradeLevel, sizeof(nUpgradeLevel));
+	outFile.write((char*)&nHandlingMode, sizeof(nHandlingMode));
+	outFile.write((char*)&bTimeTrialIsFOUC, sizeof(bTimeTrialIsFOUC));
 	int count = ghost->aPBGhost.size();
 	outFile.write((char*)&count, sizeof(count));
 	outFile.write((char*)&ghost->aPBGhost[0], sizeof(ghost->aPBGhost[0]) * count);
@@ -232,6 +246,9 @@ void LoadPB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
 	int tmpcar, tmptrack, tmptime;
 	bool tmpfirstlap = false;
 	bool tmpnoprops = false;
+	int tmpupgrade = 0;
+	int tmphandling = 0;
+	bool tmpfouc = false;
 	int tmpnitro = NITRO_FULL;
 	inFile.read((char*)&tmpcar, sizeof(tmpcar));
 	inFile.read((char*)&tmptrack, sizeof(tmptrack));
@@ -241,13 +258,24 @@ void LoadPB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
 		inFile.read((char*)&tmpfirstlap, sizeof(tmpfirstlap));
 		inFile.read((char*)&tmpnoprops, sizeof(tmpnoprops));
 	}
+	if (fileVersion >= 4) {
+		inFile.read((char*)&tmpupgrade, sizeof(tmpupgrade));
+		inFile.read((char*)&tmphandling, sizeof(tmphandling));
+		inFile.read((char*)&tmpfouc, sizeof(tmpfouc));
+	}
 	if (tmpsize != sizeof(tCarState)) {
 		WriteLog("Outdated ghost for " + fileName);
 		return;
 	}
-	if (tmpcar != car || tmptrack != track || tmpfirstlap != isFirstLap || tmpnoprops != bNoProps || tmpnitro != nNitroType) {
-		WriteLog("Mismatched ghost for " + fileName);
-		return;
+	if (!bReplayIgnoreMismatches) {
+		if (tmpcar != car || tmptrack != track || tmpfirstlap != isFirstLap || tmpnoprops != bNoProps || tmpnitro != nNitroType) {
+			WriteLog("Mismatched ghost for " + fileName);
+			return;
+		}
+		if (tmpupgrade != nUpgradeLevel || tmphandling != nHandlingMode || tmpfouc != bTimeTrialIsFOUC) {
+			WriteLog("Mismatched ghost for " + fileName);
+			return;
+		}
 	}
 	ghost->nPBTime = tmptime;
 	int count = 0;
@@ -571,6 +599,9 @@ void HookLoop() {
 				UninitTimeTrials();
 				bTimeTrialsEnabled = false;
 			}
+			if (currentGameState == GAME_STATE_RACE && !bTimeTrialsEnabled) {
+				bLastRaceWasTimeTrial = false;
+			}
 			nLastGameState = currentGameState;
 		}
 	}
@@ -595,6 +626,7 @@ void InitAndReadConfigFile() {
 	nNitroType = config["main"]["nitro_option"].value_or(NITRO_FULL);
 	bPBTimeDisplayEnabled = config["main"]["show_best_times"].value_or(true);
 	bCurrentSessionPBTimeDisplayEnabled = config["main"]["show_best_times_in_session"].value_or(true);
+	bReplayIgnoreMismatches = config["main"]["load_mismatched_replays"].value_or(false);
 	bViewReplayMode = config["extras"]["view_replays"].value_or(false);
 	bShowInputsWhileDriving = config["extras"]["always_show_input_display"].value_or(false);
 	gInputRGBHighlight.r = config["input_display"]["highlight_r"].value_or(0);
