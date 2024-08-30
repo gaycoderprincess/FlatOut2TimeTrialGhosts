@@ -159,9 +159,10 @@ std::string GetGhostFilename(int car, int track, bool isFirstLap) {
 		path += "_handling" + std::to_string(nHandlingMode);
 	}
 #ifdef FLATOUT_UC
-	path += "_fouc";
-#endif
+	path += ".foucreplay";
+#else
 	path += ".fo2replay";
+#endif
 	return path;
 }
 
