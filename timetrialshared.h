@@ -203,7 +203,11 @@ void LoadPB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
 	{
 		static int prevCar = -1;
 		static int prevTrack = -1;
-		if (prevCar != car || prevTrack != track) {
+		static int prevNitro = -1;
+		static int prevProps = -1;
+		static int prevUpgrades = -1;
+		static int prevHandling = -1;
+		if (prevCar != car || prevTrack != track || prevNitro != nNitroType || prevProps != bNoProps || prevUpgrades != nUpgradeLevel || prevHandling != nHandlingMode) {
 			RollingLapPB.nCurrentSessionPBTime = UINT_MAX;
 			StandingLapPB.nCurrentSessionPBTime = UINT_MAX;
 			RollingLapPB.fCurrentSessionTextHighlightTime = 0;
@@ -211,6 +215,10 @@ void LoadPB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
 		}
 		prevCar = car;
 		prevTrack = track;
+		prevNitro = nNitroType;
+		prevProps = bNoProps;
+		prevUpgrades = nUpgradeLevel;
+		prevHandling = nHandlingMode;
 	}
 
 	ghost->aPBGhost.clear();
@@ -534,11 +542,11 @@ void DrawTimeText(tNyaStringData& data, const std::string& name, uint32_t pbTime
 		bestTimeString += "N/A";
 	}
 	else {
-		if (isTextHighlighted) data.SetColor(0, 255, 0, 255);
-		else data.SetColor(255, 255, 255, 255);
 		bestTimeString += GetTimeFromMilliseconds(pbTime);
 		bestTimeString.pop_back(); // remove trailing 0, the game has a tickrate of 100fps
 	}
+	if (isTextHighlighted) data.SetColor(0, 255, 0, 255);
+	else data.SetColor(255, 255, 255, 255);
 	DrawStringFO2(data, converter.from_bytes(bestTimeString).c_str(), "FontLarge");
 	data.y += 0.04;
 }
