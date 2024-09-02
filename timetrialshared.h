@@ -552,12 +552,10 @@ void DrawTimeText(tNyaStringData& data, const std::string& name, uint32_t pbTime
 }
 
 void HookLoop() {
-#ifdef FLATOUT_UC
 	if (pLoadingScreen) {
 		CommonMain();
 		return;
 	}
-#endif
 
 	if (auto player = GetPlayer(0)) {
 #ifndef FLATOUT_UC

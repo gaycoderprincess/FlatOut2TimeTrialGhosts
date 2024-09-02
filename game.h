@@ -138,6 +138,8 @@ public:
 };
 auto& pGame = *(Game**)0x8E8410;
 
+auto& pLoadingScreen = *(void**)0x8E8448;
+
 class Font {
 public:
 	uint8_t _0[0x4];

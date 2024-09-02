@@ -8,6 +8,7 @@ disable_props = false					# Removes all dynamic objects from the map
 nitro_option = 1					# 0 - none, 1 - normal, 2 - double, 3 - infinite
 show_best_times = true					# Displays the best lap times you've ever achieved for a track on the top right in-game
 show_best_times_in_session = true			# Displays the best lap times you've achieved in the current session on the top right in-game
+load_mismatched_replays = false				# Loads replays with matching names even if they were actually created using different settings (e.g. nitro, upgrades, car, etc.)
 
 [extras]
 view_replays = false					# View & spectate replays for a track, including inputs
