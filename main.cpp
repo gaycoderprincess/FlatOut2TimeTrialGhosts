@@ -154,7 +154,7 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD fdwReason, LPVOID) {
 				NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x408A54, &AISameCarASM);
 				NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x45DBFF, &GetPlayerCarASM);
 				NyaHookLib::Fill(0x4DE31D, 0x90, 16);
-				NyaHookLib::Patch<uint8_t>(0x45CD01 + 1, 1); // only spawn one ai
+				NyaHookLib::Patch<uint8_t>(0x45CD01 + 1, 2); // only spawn two ai
 				NyaHookLib::Patch<uint8_t>(0x46C89A, 0xEB); // allow ai to ghost
 				NyaHookLib::Patch<uint8_t>(0x430FC1, 0xEB); // use regular skins for ai
 				NyaHookLib::Patch<uint8_t>(0x42FCB2, 0xEB); // use regular skins for ai

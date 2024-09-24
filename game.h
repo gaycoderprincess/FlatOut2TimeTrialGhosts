@@ -138,6 +138,22 @@ public:
 };
 auto& pGame = *(Game**)0x8E8410;
 
+class PlayerScoreRace {
+public:
+	uint8_t _0[0x4];
+	uint32_t nPlayerId; // 4
+	uint8_t _8[0x3C];
+	uint32_t nCurrentLap; // 44
+};
+
+class ScoreManager {
+public:
+	uint8_t _0[0x8];
+	void** pScoresStart;
+	void** pScoresEnd;
+};
+auto& pScoreManager = *(ScoreManager**)0x8DA5D0;
+
 auto& pLoadingScreen = *(void**)0x8E8448;
 
 class Font {
@@ -179,4 +195,19 @@ void DrawStringFO2(tNyaStringData data, const wchar_t* string, const char* font)
 	pFont->nColor.a = data.a;
 	pFont->fScaleX *= GetAspectRatioInv();
 	Font::Display(pFont, data.x * nResX, data.y * nResY, string);
+}
+
+template<typename T>
+T* GetPlayerScore(int playerId) {
+	if (!pScoreManager) return nullptr;
+
+	auto score = (T**)pScoreManager->pScoresStart;
+	auto end = (T**)pScoreManager->pScoresEnd;
+	while (score < end) {
+		if ((*score)->nPlayerId + 1 == playerId) {
+			return *score;
+		}
+		score++;
+	}
+	return nullptr;
 }

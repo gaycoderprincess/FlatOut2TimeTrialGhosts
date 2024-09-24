@@ -111,6 +111,9 @@ struct tInputState {
 std::vector<tCarState> aRecordingGhost;
 std::vector<tInputState> aRecordingInputs;
 
+struct tGhostSetup;
+std::vector<tGhostSetup*> aGhosts;
+
 struct tGhostSetup {
 	std::vector<tCarState> aPBGhost;
 	std::vector<tInputState> aPBInputs;
@@ -118,6 +121,14 @@ struct tGhostSetup {
 	uint32_t nCurrentSessionPBTime = UINT_MAX;
 	float fTextHighlightTime = 0;
 	float fCurrentSessionTextHighlightTime = 0;
+
+	tGhostSetup() {
+		aGhosts.push_back(this);
+	}
+
+	bool IsValid() {
+		return nPBTime != UINT_MAX;
+	}
 
 	void UpdateTextHighlight() {
 		if (fTextHighlightTime > 0) fTextHighlightTime -= 0.01;
@@ -127,6 +138,9 @@ struct tGhostSetup {
 tGhostSetup RollingLapPB;
 tGhostSetup StandingLapPB;
 tGhostSetup ThreeLapPB;
+tGhostSetup OpponentRollingLapPB;
+tGhostSetup OpponentStandingLapPB;
+tGhostSetup OpponentThreeLapPB;
 
 bool bGhostLoaded = false;
 double fGhostTime = 0;
@@ -144,8 +158,11 @@ bool ShouldGhostRun() {
 	return true;
 }
 
-std::string GetGhostFilename(int car, int track, int lapType) {
-	auto path = "Ghosts/Track" + std::to_string(track) + "_Car" + std::to_string(car + 1);
+std::string GetGhostFilename(int car, int track, int lapType, bool isOpponentGhost) {
+	std::string subFolder = "Ghosts/";
+	if (isOpponentGhost) subFolder += "Opponents/";
+
+	auto path = subFolder + "Track" + std::to_string(track) + "_Car" + std::to_string(car + 1);
 	if (bNoProps) path += "_noprops";
 	if (lapType == LAPTYPE_STANDING) path += "_lap1";
 	if (lapType == LAPTYPE_THREELAP) path += "_3lap";
@@ -178,8 +195,9 @@ std::string GetGhostFilename(int car, int track, int lapType) {
 
 void SavePB(tGhostSetup* ghost, int car, int track, uint8_t lapType) {
 	std::filesystem::create_directory("Ghosts");
+	std::filesystem::create_directory("Ghosts/Opponents");
 
-	auto fileName = GetGhostFilename(car, track, lapType);
+	auto fileName = GetGhostFilename(car, track, lapType, false);
 	auto outFile = std::ofstream(fileName, std::ios::out | std::ios::binary);
 	if (!outFile.is_open()) {
 		WriteLog("Failed to save " + fileName + "!");
@@ -208,7 +226,7 @@ void SavePB(tGhostSetup* ghost, int car, int track, uint8_t lapType) {
 	outFile.write((char*)&ghost->aPBInputs[0], sizeof(ghost->aPBInputs[0]) * count);
 }
 
-void LoadPB(tGhostSetup* ghost, int car, int track, int lapType) {
+void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, bool isOpponentGhost) {
 	// reset current session PBs if we're loading a different track/car combo
 	{
 		static int prevCar = -1;
@@ -219,12 +237,10 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType) {
 		static int prevHandling = -1;
 		static int prev3Lap = -1;
 		if (prev3Lap != (lapType == LAPTYPE_THREELAP) || prevCar != car || prevTrack != track || prevNitro != nNitroType || prevProps != bNoProps || prevUpgrades != nUpgradeLevel || prevHandling != nHandlingMode) {
-			RollingLapPB.nCurrentSessionPBTime = UINT_MAX;
-			StandingLapPB.nCurrentSessionPBTime = UINT_MAX;
-			ThreeLapPB.nCurrentSessionPBTime = UINT_MAX;
-			RollingLapPB.fCurrentSessionTextHighlightTime = 0;
-			StandingLapPB.fCurrentSessionTextHighlightTime = 0;
-			ThreeLapPB.fCurrentSessionTextHighlightTime = 0;
+			for (auto ghost : aGhosts) {
+				ghost->nCurrentSessionPBTime = UINT_MAX;
+				ghost->fCurrentSessionTextHighlightTime = 0;
+			}
 		}
 		prev3Lap = lapType == LAPTYPE_THREELAP;
 		prevCar = car;
@@ -240,7 +256,7 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType) {
 	ghost->nPBTime = UINT_MAX;
 	ghost->fTextHighlightTime = 0;
 
-	auto fileName = GetGhostFilename(car, track, lapType);
+	auto fileName = GetGhostFilename(car, track, lapType, isOpponentGhost);
 	auto inFile = std::ifstream(fileName, std::ios::in | std::ios::binary);
 	if (!inFile.is_open()) {
 		WriteLog("No ghost found for " + fileName);
@@ -321,11 +337,14 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType) {
 
 void ResetAndLoadPBGhost() {
 	if (b3LapMode) {
-		LoadPB(&ThreeLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, LAPTYPE_THREELAP);
+		LoadPB(&ThreeLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, LAPTYPE_THREELAP, false);
+		LoadPB(&OpponentThreeLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, LAPTYPE_THREELAP, true);
 	}
 	else {
-		LoadPB(&StandingLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, LAPTYPE_STANDING);
-		LoadPB(&RollingLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, LAPTYPE_ROLLING);
+		LoadPB(&StandingLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, LAPTYPE_STANDING, false);
+		LoadPB(&RollingLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, LAPTYPE_ROLLING, false);
+		LoadPB(&OpponentStandingLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, LAPTYPE_STANDING, true);
+		LoadPB(&OpponentRollingLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, LAPTYPE_ROLLING, true);
 	}
 	bGhostLoaded = true;
 }
@@ -334,18 +353,12 @@ void InvalidateGhost() {
 	bGhostLoaded = false;
 	fGhostTime = 0;
 	fGhostRecordTotalTime = 0;
-	RollingLapPB.nPBTime = UINT_MAX;
-	RollingLapPB.fTextHighlightTime = 0;
-	RollingLapPB.aPBGhost.clear();
-	RollingLapPB.aPBInputs.clear();
-	StandingLapPB.nPBTime = UINT_MAX;
-	StandingLapPB.fTextHighlightTime = 0;
-	StandingLapPB.aPBGhost.clear();
-	StandingLapPB.aPBInputs.clear();
-	ThreeLapPB.nPBTime = UINT_MAX;
-	ThreeLapPB.fTextHighlightTime = 0;
-	ThreeLapPB.aPBGhost.clear();
-	ThreeLapPB.aPBInputs.clear();
+	for (auto ghost : aGhosts) {
+		ghost->nPBTime = UINT_MAX;
+		ghost->fTextHighlightTime = 0;
+		ghost->aPBGhost.clear();
+		ghost->aPBInputs.clear();
+	}
 	aRecordingGhost.clear();
 	aRecordingInputs.clear();
 }
@@ -363,14 +376,21 @@ void RunGhost(Player* pPlayer) {
 	int eventProperties[] = {PLAYEREVENT_RESPAWN_GHOST, 0, 0, 0, 1000};
 	pPlayer->TriggerEvent(eventProperties);
 
-	fGhostTime += 0.01;
+	bool isOpponent = pPlayer == GetPlayer(2);
+	if (!isOpponent) fGhostTime += 0.01;
 
 	auto ply = GetPlayerScore<PlayerScoreRace>(1);
-	auto ghost = ply->nCurrentLap == 0 ? &StandingLapPB : &RollingLapPB;
-	if (b3LapMode) ghost = &ThreeLapPB;
+	tGhostSetup* ghost = nullptr;
+	if (isOpponent) {
+		ghost = ply->nCurrentLap == 0 ? &OpponentStandingLapPB : &OpponentRollingLapPB;
+	}
+	else {
+		ghost = ply->nCurrentLap == 0 ? &StandingLapPB : &RollingLapPB;
+	}
+	if (b3LapMode) ghost = isOpponent ? &OpponentThreeLapPB : &ThreeLapPB;
 
 	if (ghost->aPBGhost.empty()) {
-		if (!bViewReplayMode) pPlayer->pCar->mMatrix.a4 = {0,-25,0};
+		if (!bViewReplayMode) pPlayer->pCar->mMatrix.a4 = {500,-25,500};
 		return;
 	}
 
@@ -420,12 +440,13 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 
 	auto localPlayer = GetPlayer(0);
 	auto ghostPlayer = GetPlayer(1);
-	if (!localPlayer || !ghostPlayer) return;
+	auto opponentGhostPlayer = GetPlayer(2);
+	if (!localPlayer || !ghostPlayer || !opponentGhostPlayer) return;
 
 	if (pPlayer == localPlayer) {
-		RollingLapPB.UpdateTextHighlight();
-		StandingLapPB.UpdateTextHighlight();
-		ThreeLapPB.UpdateTextHighlight();
+		for (auto ghost : aGhosts) {
+			ghost->UpdateTextHighlight();
+		}
 	}
 
 	switch (nNitroType) {
@@ -453,10 +474,12 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 	if (nGhostVisuals == 2 && pPlayer == ghostPlayer) {
 		auto localPlayerPos = localPlayer->pCar->mMatrix.a4;
 		auto ghostPlayerPos = ghostPlayer->pCar->mMatrix.a4;
-		SetGhostVisuals((localPlayerPos - ghostPlayerPos).length() < 8);
+		auto opponentGhostPlayerPos = opponentGhostPlayer->pCar->mMatrix.a4;
+		SetGhostVisuals((localPlayerPos - ghostPlayerPos).length() < 8 || (localPlayerPos - opponentGhostPlayerPos).length() < 8);
 	}
 
-	if (IsPlayerStaging(localPlayer)) {
+	auto ply = GetPlayerScore<PlayerScoreRace>(1);
+	if (IsPlayerStaging(localPlayer) && ply->nCurrentLap == 0) {
 		InvalidateGhost();
 	}
 
@@ -465,8 +488,8 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 
 		if (bViewReplayMode) {
 			if (pPlayer == localPlayer) RunGhost(pPlayer);
-			if (pPlayer == ghostPlayer) {
-				pPlayer->pCar->mMatrix.a4 = {0,-25,0};
+			if (pPlayer == ghostPlayer || pPlayer == opponentGhostPlayer) {
+				pPlayer->pCar->mMatrix.a4 = {500,-25,500};
 				pPlayer->pCar->vVelocity = {0,0,0};
 				pPlayer->pCar->vAngVelocity = {0,0,0};
 				pPlayer->pCar->fGasPedal = 0;
@@ -475,11 +498,11 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 			}
 		}
 		else {
-			if (pPlayer == ghostPlayer) RunGhost(pPlayer);
+			if (pPlayer == ghostPlayer || pPlayer == opponentGhostPlayer) RunGhost(pPlayer);
 			if (pPlayer == localPlayer) RecordGhost(pPlayer);
 		}
 	}
-	else if (pPlayer == ghostPlayer) {
+	else if (pPlayer == ghostPlayer || pPlayer == opponentGhostPlayer) {
 		pPlayer->pCar->vVelocity = {0,0,0};
 		pPlayer->pCar->vAngVelocity = {0,0,0};
 		pPlayer->pCar->fGasPedal = 0;
@@ -525,7 +548,9 @@ void __fastcall OnFinishLap(uint32_t lapTime) {
 }
 
 const wchar_t* GetAIName() {
-	return L"PB GHOST";
+	static bool bType = false;
+	bType = !bType;
+	return bType ? L"PB GHOST" : L"OPPONENT GHOST";
 }
 
 auto gInputRGBBackground = NyaDrawing::CNyaRGBA32(215,215,215,255);
@@ -613,7 +638,7 @@ void HookLoop() {
 		}
 #endif
 
-		if (bTimeTrialsEnabled && (bPBTimeDisplayEnabled || bCurrentSessionPBTimeDisplayEnabled) && (ply->nCurrentLap != 0 || !IsPlayerStaging(player))) {
+		if (bTimeTrialsEnabled && (bPBTimeDisplayEnabled || bCurrentSessionPBTimeDisplayEnabled) && !IsPlayerStaging(player)) {
 			tNyaStringData data;
 			//data.x = 0.5;
 			//data.y = 0.21;
@@ -633,6 +658,9 @@ void HookLoop() {
 					DrawTimeText(data, "Best Time (Session): ", ThreeLapPB.nCurrentSessionPBTime,
 								 ThreeLapPB.fCurrentSessionTextHighlightTime > 0);
 				}
+				if (bPBTimeDisplayEnabled && OpponentThreeLapPB.IsValid()) {
+					DrawTimeText(data, "Opponent's Best Time: ", OpponentThreeLapPB.nPBTime, OpponentThreeLapPB.fTextHighlightTime > 0);
+				}
 			}
 			else {
 				if (bPBTimeDisplayEnabled) {
@@ -644,6 +672,14 @@ void HookLoop() {
 								 RollingLapPB.fCurrentSessionTextHighlightTime > 0);
 					DrawTimeText(data, "Standing PB (Session): ", StandingLapPB.nCurrentSessionPBTime,
 								 StandingLapPB.fCurrentSessionTextHighlightTime > 0);
+				}
+				if (bPBTimeDisplayEnabled) {
+					if (OpponentRollingLapPB.IsValid()) {
+						DrawTimeText(data, "Opponent Rolling PB: ", OpponentRollingLapPB.nPBTime, OpponentRollingLapPB.fTextHighlightTime > 0);
+					}
+					if (OpponentStandingLapPB.IsValid()) {
+						DrawTimeText(data, "Opponent Standing PB: ", OpponentStandingLapPB.nPBTime, OpponentStandingLapPB.fTextHighlightTime > 0);
+					}
 				}
 			}
 		}
