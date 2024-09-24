@@ -1,5 +1,11 @@
 const int nLocalReplayVersion = 4;
 
+enum eLapType {
+	LAPTYPE_ROLLING,
+	LAPTYPE_STANDING,
+	LAPTYPE_THREELAP
+};
+
 enum eNitroType {
 	NITRO_NONE,
 	NITRO_FULL,
@@ -19,12 +25,15 @@ bool bCurrentSessionPBTimeDisplayEnabled = true;
 bool bChloeCollectionIntegration = false;
 bool bLastRaceWasTimeTrial = false;
 bool bReplayIgnoreMismatches = false;
+bool b3LapMode = false;
 
 #ifdef FLATOUT_UC
 bool bTimeTrialIsFOUC = true;
 #else
 bool bTimeTrialIsFOUC = false;
 #endif
+
+uint32_t n3LapTotalTime = 0;
 
 void WriteLog(const std::string& str) {
 #ifdef FLATOUT_UC
@@ -117,9 +126,9 @@ struct tGhostSetup {
 };
 tGhostSetup RollingLapPB;
 tGhostSetup StandingLapPB;
+tGhostSetup ThreeLapPB;
 
 bool bGhostLoaded = false;
-bool bIsFirstLap = false;
 double fGhostTime = 0;
 double fGhostRecordTotalTime = 0;
 
@@ -135,10 +144,11 @@ bool ShouldGhostRun() {
 	return true;
 }
 
-std::string GetGhostFilename(int car, int track, bool isFirstLap) {
+std::string GetGhostFilename(int car, int track, int lapType) {
 	auto path = "Ghosts/Track" + std::to_string(track) + "_Car" + std::to_string(car + 1);
 	if (bNoProps) path += "_noprops";
-	if (isFirstLap) path += "_lap1";
+	if (lapType == LAPTYPE_STANDING) path += "_lap1";
+	if (lapType == LAPTYPE_THREELAP) path += "_3lap";
 	switch (nNitroType) {
 		case NITRO_NONE:
 			path += "_nonitro";
@@ -166,10 +176,10 @@ std::string GetGhostFilename(int car, int track, bool isFirstLap) {
 	return path;
 }
 
-void SavePB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
+void SavePB(tGhostSetup* ghost, int car, int track, uint8_t lapType) {
 	std::filesystem::create_directory("Ghosts");
 
-	auto fileName = GetGhostFilename(car, track, isFirstLap);
+	auto fileName = GetGhostFilename(car, track, lapType);
 	auto outFile = std::ofstream(fileName, std::ios::out | std::ios::binary);
 	if (!outFile.is_open()) {
 		WriteLog("Failed to save " + fileName + "!");
@@ -187,7 +197,7 @@ void SavePB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
 	outFile.write((char*)&track, sizeof(track));
 	outFile.write((char*)&ghost->nPBTime, sizeof(ghost->nPBTime));
 	outFile.write((char*)&nNitroType, sizeof(nNitroType));
-	outFile.write((char*)&isFirstLap, sizeof(isFirstLap));
+	outFile.write((char*)&lapType, sizeof(lapType));
 	outFile.write((char*)&bNoProps, sizeof(bNoProps));
 	outFile.write((char*)&nUpgradeLevel, sizeof(nUpgradeLevel));
 	outFile.write((char*)&nHandlingMode, sizeof(nHandlingMode));
@@ -198,7 +208,7 @@ void SavePB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
 	outFile.write((char*)&ghost->aPBInputs[0], sizeof(ghost->aPBInputs[0]) * count);
 }
 
-void LoadPB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
+void LoadPB(tGhostSetup* ghost, int car, int track, int lapType) {
 	// reset current session PBs if we're loading a different track/car combo
 	{
 		static int prevCar = -1;
@@ -207,12 +217,16 @@ void LoadPB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
 		static int prevProps = -1;
 		static int prevUpgrades = -1;
 		static int prevHandling = -1;
-		if (prevCar != car || prevTrack != track || prevNitro != nNitroType || prevProps != bNoProps || prevUpgrades != nUpgradeLevel || prevHandling != nHandlingMode) {
+		static int prev3Lap = -1;
+		if (prev3Lap != (lapType == LAPTYPE_THREELAP) || prevCar != car || prevTrack != track || prevNitro != nNitroType || prevProps != bNoProps || prevUpgrades != nUpgradeLevel || prevHandling != nHandlingMode) {
 			RollingLapPB.nCurrentSessionPBTime = UINT_MAX;
 			StandingLapPB.nCurrentSessionPBTime = UINT_MAX;
+			ThreeLapPB.nCurrentSessionPBTime = UINT_MAX;
 			RollingLapPB.fCurrentSessionTextHighlightTime = 0;
 			StandingLapPB.fCurrentSessionTextHighlightTime = 0;
+			ThreeLapPB.fCurrentSessionTextHighlightTime = 0;
 		}
+		prev3Lap = lapType == LAPTYPE_THREELAP;
 		prevCar = car;
 		prevTrack = track;
 		prevNitro = nNitroType;
@@ -226,7 +240,7 @@ void LoadPB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
 	ghost->nPBTime = UINT_MAX;
 	ghost->fTextHighlightTime = 0;
 
-	auto fileName = GetGhostFilename(car, track, isFirstLap);
+	auto fileName = GetGhostFilename(car, track, lapType);
 	auto inFile = std::ifstream(fileName, std::ios::in | std::ios::binary);
 	if (!inFile.is_open()) {
 		WriteLog("No ghost found for " + fileName);
@@ -253,7 +267,7 @@ void LoadPB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
 	}
 
 	int tmpcar, tmptrack, tmptime;
-	bool tmpfirstlap = false;
+	uint8_t tmpfirstlap = 0;
 	bool tmpnoprops = false;
 	int tmpupgrade = 0;
 	int tmphandling = 0;
@@ -277,7 +291,7 @@ void LoadPB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
 		return;
 	}
 	if (!bReplayIgnoreMismatches) {
-		if (tmpcar != car || tmptrack != track || tmpfirstlap != isFirstLap || tmpnoprops != bNoProps || tmpnitro != nNitroType) {
+		if (tmpcar != car || tmptrack != track || tmpfirstlap != lapType || tmpnoprops != bNoProps || tmpnitro != nNitroType) {
 			WriteLog("Mismatched ghost for " + fileName);
 			return;
 		}
@@ -306,13 +320,17 @@ void LoadPB(tGhostSetup* ghost, int car, int track, bool isFirstLap) {
 }
 
 void ResetAndLoadPBGhost() {
-	LoadPB(&StandingLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, true);
-	LoadPB(&RollingLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, false);
+	if (b3LapMode) {
+		LoadPB(&ThreeLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, LAPTYPE_THREELAP);
+	}
+	else {
+		LoadPB(&StandingLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, LAPTYPE_STANDING);
+		LoadPB(&RollingLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, LAPTYPE_ROLLING);
+	}
 	bGhostLoaded = true;
 }
 
 void InvalidateGhost() {
-	bIsFirstLap = true;
 	bGhostLoaded = false;
 	fGhostTime = 0;
 	fGhostRecordTotalTime = 0;
@@ -324,6 +342,10 @@ void InvalidateGhost() {
 	StandingLapPB.fTextHighlightTime = 0;
 	StandingLapPB.aPBGhost.clear();
 	StandingLapPB.aPBInputs.clear();
+	ThreeLapPB.nPBTime = UINT_MAX;
+	ThreeLapPB.fTextHighlightTime = 0;
+	ThreeLapPB.aPBGhost.clear();
+	ThreeLapPB.aPBInputs.clear();
 	aRecordingGhost.clear();
 	aRecordingInputs.clear();
 }
@@ -343,7 +365,9 @@ void RunGhost(Player* pPlayer) {
 
 	fGhostTime += 0.01;
 
-	auto ghost = bIsFirstLap ? &StandingLapPB : &RollingLapPB;
+	auto ply = GetPlayerScore<PlayerScoreRace>(1);
+	auto ghost = ply->nCurrentLap == 0 ? &StandingLapPB : &RollingLapPB;
+	if (b3LapMode) ghost = &ThreeLapPB;
 
 	if (ghost->aPBGhost.empty()) {
 		if (!bViewReplayMode) pPlayer->pCar->mMatrix.a4 = {0,-25,0};
@@ -389,6 +413,7 @@ void RecordGhost(Player* pPlayer) {
 }
 
 void __fastcall ProcessGhostCar(Player* pPlayer) {
+	if (!bTimeTrialsEnabled) return;
 	if (!pPlayer) return;
 
 	if (bViewReplayMode) SetPlayerControl(true);
@@ -400,6 +425,7 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 	if (pPlayer == localPlayer) {
 		RollingLapPB.UpdateTextHighlight();
 		StandingLapPB.UpdateTextHighlight();
+		ThreeLapPB.UpdateTextHighlight();
 	}
 
 	switch (nNitroType) {
@@ -463,22 +489,35 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 }
 
 void __fastcall OnFinishLap(uint32_t lapTime) {
-	auto ghost = bIsFirstLap ? &StandingLapPB : &RollingLapPB;
+	auto ply = GetPlayerScore<PlayerScoreRace>(1);
+	bool isFirstLap = (ply->nCurrentLap - 1) == 0; // it's already increased by this point
+	if (b3LapMode) {
+		if (isFirstLap) n3LapTotalTime = lapTime;
+		else n3LapTotalTime += lapTime;
+
+		if (ply->nCurrentLap != 3) return;
+	}
+
+	uint32_t replayTime = b3LapMode ? n3LapTotalTime : lapTime;
+
+	auto ghost = isFirstLap ? &StandingLapPB : &RollingLapPB;
+	if (b3LapMode) ghost = &ThreeLapPB;
+
 	if (!bViewReplayMode) {
-		if (lapTime < ghost->nPBTime) {
-			WriteLog("Saving new lap PB of " + std::to_string(lapTime) + "ms");
+		if (replayTime < ghost->nPBTime) {
+			WriteLog("Saving new lap PB of " + std::to_string(replayTime) + "ms");
 			ghost->aPBGhost = aRecordingGhost;
 			ghost->aPBInputs = aRecordingInputs;
-			ghost->nPBTime = lapTime;
+			ghost->nPBTime = replayTime;
 			ghost->fTextHighlightTime = 5;
-			SavePB(ghost, GetPlayer(0)->nCarId, pGame->nLevelId, bIsFirstLap);
+			SavePB(ghost, GetPlayer(0)->nCarId, pGame->nLevelId, b3LapMode ? LAPTYPE_THREELAP : isFirstLap);
 		}
-		if (lapTime < ghost->nCurrentSessionPBTime) {
-			ghost->nCurrentSessionPBTime = lapTime;
+		if (replayTime < ghost->nCurrentSessionPBTime) {
+			ghost->nCurrentSessionPBTime = replayTime;
 			ghost->fCurrentSessionTextHighlightTime = 5;
 		}
 	}
-	bIsFirstLap = false;
+	isFirstLap = false;
 	aRecordingGhost.clear();
 	aRecordingInputs.clear();
 	fGhostTime = 0;
@@ -558,9 +597,12 @@ void HookLoop() {
 	}
 
 	if (auto player = GetPlayer(0)) {
+		auto ply = GetPlayerScore<PlayerScoreRace>(1);
+
 #ifndef FLATOUT_UC
 		if (bViewReplayMode) {
-			auto ghost = bIsFirstLap ? &StandingLapPB : &RollingLapPB;
+			auto ghost = ply->nCurrentLap == 0 ? &StandingLapPB : &RollingLapPB;
+			if (b3LapMode) ghost = &ThreeLapPB;
 			if (!ghost->aPBInputs.empty()) {
 				DisplayInputs(&ghost->aPBInputs[GetCurrentPlaybackTick(ghost)]);
 			}
@@ -571,7 +613,7 @@ void HookLoop() {
 		}
 #endif
 
-		if (bTimeTrialsEnabled && (bPBTimeDisplayEnabled || bCurrentSessionPBTimeDisplayEnabled) && !IsPlayerStaging(player)) {
+		if (bTimeTrialsEnabled && (bPBTimeDisplayEnabled || bCurrentSessionPBTimeDisplayEnabled) && (ply->nCurrentLap != 0 || !IsPlayerStaging(player))) {
 			tNyaStringData data;
 			//data.x = 0.5;
 			//data.y = 0.21;
@@ -583,15 +625,26 @@ void HookLoop() {
 #endif
 			data.size = 0.04;
 			data.XRightAlign = true;
-			if (bPBTimeDisplayEnabled) {
-				DrawTimeText(data, "Rolling PB: ", RollingLapPB.nPBTime, RollingLapPB.fTextHighlightTime > 0);
-				DrawTimeText(data, "Standing PB: ", StandingLapPB.nPBTime, StandingLapPB.fTextHighlightTime > 0);
+			if (b3LapMode) {
+				if (bPBTimeDisplayEnabled) {
+					DrawTimeText(data, "Best Time: ", ThreeLapPB.nPBTime, ThreeLapPB.fTextHighlightTime > 0);
+				}
+				if (bCurrentSessionPBTimeDisplayEnabled) {
+					DrawTimeText(data, "Best Time (Session): ", ThreeLapPB.nCurrentSessionPBTime,
+								 ThreeLapPB.fCurrentSessionTextHighlightTime > 0);
+				}
 			}
-			if (bCurrentSessionPBTimeDisplayEnabled) {
-				DrawTimeText(data, "Rolling PB (Session): ", RollingLapPB.nCurrentSessionPBTime,
-							 RollingLapPB.fCurrentSessionTextHighlightTime > 0);
-				DrawTimeText(data, "Standing PB (Session): ", StandingLapPB.nCurrentSessionPBTime,
-							 StandingLapPB.fCurrentSessionTextHighlightTime > 0);
+			else {
+				if (bPBTimeDisplayEnabled) {
+					DrawTimeText(data, "Rolling PB: ", RollingLapPB.nPBTime, RollingLapPB.fTextHighlightTime > 0);
+					DrawTimeText(data, "Standing PB: ", StandingLapPB.nPBTime, StandingLapPB.fTextHighlightTime > 0);
+				}
+				if (bCurrentSessionPBTimeDisplayEnabled) {
+					DrawTimeText(data, "Rolling PB (Session): ", RollingLapPB.nCurrentSessionPBTime,
+								 RollingLapPB.fCurrentSessionTextHighlightTime > 0);
+					DrawTimeText(data, "Standing PB (Session): ", StandingLapPB.nCurrentSessionPBTime,
+								 StandingLapPB.fCurrentSessionTextHighlightTime > 0);
+				}
 			}
 		}
 	}
@@ -634,6 +687,7 @@ void InitAndReadConfigFile() {
 	bPBTimeDisplayEnabled = config["main"]["show_best_times"].value_or(true);
 	bCurrentSessionPBTimeDisplayEnabled = config["main"]["show_best_times_in_session"].value_or(true);
 	bReplayIgnoreMismatches = config["main"]["load_mismatched_replays"].value_or(false);
+	b3LapMode = config["main"]["three_lap_mode"].value_or(false);
 	bViewReplayMode = config["extras"]["view_replays"].value_or(false);
 	bShowInputsWhileDriving = config["extras"]["always_show_input_display"].value_or(false);
 	gInputRGBHighlight.r = config["input_display"]["highlight_r"].value_or(0);
