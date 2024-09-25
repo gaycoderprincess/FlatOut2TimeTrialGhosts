@@ -158,38 +158,79 @@ bool ShouldGhostRun() {
 	return true;
 }
 
-std::string GetGhostFilename(int car, int track, int lapType, bool isOpponentGhost) {
-	std::string subFolder = "Ghosts/";
-	if (isOpponentGhost) subFolder += "Opponents/";
+const char* GetCarName(int id) {
+	auto db = GetLiteDB();
+	auto table = db->GetTable(std::format("FlatOut2.Cars.Car[{}]", id).c_str());
+	return (const char*)table->GetPropertyPointer("Name");
+}
 
-	auto path = subFolder + "Track" + std::to_string(track) + "_Car" + std::to_string(car + 1);
+const char* GetTrackName(int id) {
+	auto lua = pScriptHost->pLUAStruct->pLUAContext;
+	auto oldtop = lua_gettop(lua);
+
+	lua_getfield(lua, -10002, "Levels");
+	lua_rawgeti(lua, lua_gettop(lua), id);
+
+	auto oldtop2 = lua_gettop(lua);
+	lua_setglobal(lua, "Name");
+	lua_gettable(lua, oldtop2);
+	auto name = lua_tolstring(lua, lua_gettop(lua), 0);
+
+	lua_settop(lua, oldtop);
+
+	return name;
+}
+
+std::string RemoveSpacesFromString(const std::string& str) {
+	auto newStr = str;
+
+	while (true) {
+		auto pos = newStr.find(' ');
+		if (pos == std::string::npos) break;
+		newStr.erase(newStr.begin() + pos);
+	}
+
+	return newStr;
+}
+
+std::string GetGhostFilename(int car, int track, int lapType, bool isOpponentGhost, bool useLegacyNaming) {
+	std::string path = "Ghosts/";
+	if (isOpponentGhost) path += "Opponents/";
+
+	if (useLegacyNaming) {
+		path += "Track" + std::to_string(track) + "_Car" + std::to_string(car + 1);
+	}
+	else {
+		path += RemoveSpacesFromString(GetTrackName(track)) + (std::string)"_" + RemoveSpacesFromString(GetCarName(car));
+	}
 	if (bNoProps) path += "_noprops";
 	if (lapType == LAPTYPE_STANDING) path += "_lap1";
 	if (lapType == LAPTYPE_THREELAP) path += "_3lap";
 	switch (nNitroType) {
 		case NITRO_NONE:
-			path += "_nonitro";
+			path += useLegacyNaming ? "_nonitro" : "_0x";
 			break;
 		case NITRO_DOUBLE:
-			path += "_2xnitro";
+			path += useLegacyNaming ? "_2xnitro" : "_2x";
 			break;
 		case NITRO_INFINITE:
-			path += "_infnitro";
+			path += useLegacyNaming ? "_infnitro" : "_inf";
 			break;
 		default:
 			break;
 	}
 	if (nUpgradeLevel) {
-		path += "_upgrade" + std::to_string(nUpgradeLevel);
+		path += (useLegacyNaming ? "_upgrade" : "_up") + std::to_string(nUpgradeLevel);
 	}
 	if (nHandlingMode) {
-		path += "_handling" + std::to_string(nHandlingMode);
+		path += (useLegacyNaming ? "_handling" : "_hnd") + std::to_string(nHandlingMode);
 	}
 #ifdef FLATOUT_UC
-	path += ".foucreplay";
+	path += ".fouc";
 #else
-	path += ".fo2replay";
+	path += ".fo2";
 #endif
+	path += useLegacyNaming ? "replay" : "rep";
 	return path;
 }
 
@@ -197,7 +238,7 @@ void SavePB(tGhostSetup* ghost, int car, int track, uint8_t lapType) {
 	std::filesystem::create_directory("Ghosts");
 	std::filesystem::create_directory("Ghosts/Opponents");
 
-	auto fileName = GetGhostFilename(car, track, lapType, false);
+	auto fileName = GetGhostFilename(car, track, lapType, false, false);
 	auto outFile = std::ofstream(fileName, std::ios::out | std::ios::binary);
 	if (!outFile.is_open()) {
 		WriteLog("Failed to save " + fileName + "!");
@@ -256,11 +297,19 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, bool isOpponent
 	ghost->nPBTime = UINT_MAX;
 	ghost->fTextHighlightTime = 0;
 
-	auto fileName = GetGhostFilename(car, track, lapType, isOpponentGhost);
+	auto fileName = GetGhostFilename(car, track, lapType, isOpponentGhost, false);
 	auto inFile = std::ifstream(fileName, std::ios::in | std::ios::binary);
 	if (!inFile.is_open()) {
-		WriteLog("No ghost found for " + fileName);
-		return;
+		auto legacyFileName = GetGhostFilename(car, track, lapType, isOpponentGhost, true);
+		inFile = std::ifstream(legacyFileName, std::ios::in | std::ios::binary);
+		if (!inFile.is_open()) {
+			WriteLog("No ghost found for " + fileName);
+			return;
+		}
+		inFile.close();
+		WriteLog("Legacy ghost found, renaming " + legacyFileName + " to " + fileName);
+		std::filesystem::rename(legacyFileName, fileName);
+		return LoadPB(ghost, car, track, lapType, isOpponentGhost);
 	}
 
 	int tmpsize;
@@ -307,7 +356,13 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, bool isOpponent
 		return;
 	}
 	if (!bReplayIgnoreMismatches) {
-		if (tmpcar != car || tmptrack != track || tmpfirstlap != lapType || tmpnoprops != bNoProps || tmpnitro != nNitroType) {
+#ifndef FLATOUT_UC
+		if (tmpcar != car || tmptrack != track) {
+			WriteLog("Mismatched ghost for " + fileName);
+			return;
+		}
+#endif
+		if (tmpfirstlap != lapType || tmpnoprops != bNoProps || tmpnitro != nNitroType) {
 			WriteLog("Mismatched ghost for " + fileName);
 			return;
 		}
