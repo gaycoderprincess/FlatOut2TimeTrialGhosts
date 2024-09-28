@@ -20,12 +20,12 @@ class Player;
 class Car {
 public:
 	uint8_t _0[0x1B0];
-	tMatrix mMatrix;			// +1B0
+	float mMatrix[4*4];			// +1B0
 	uint8_t _1F0[0x80];
 	float qQuaternion[4];		// +270
-	NyaVec3 vVelocity;			// +280
+	float vVelocity[3];			// +280
 	uint8_t _28C[0x4];
-	NyaVec3 vAngVelocity;		// +290
+	float vAngVelocity[3];		// +290
 	uint8_t _29C[0x330];
 	float fNitro;				// +5CC
 	uint8_t _5D0[0x24];
@@ -38,6 +38,18 @@ public:
 	float fSteerAngle;			// +1E04
 	uint8_t _1E08[0x4C98];
 	float fDamage;				// +6AA0
+
+#ifdef NYA_MATH_H
+	inline NyaMat4x4* GetMatrix() {
+		return (NyaMat4x4*)mMatrix;
+	}
+	inline NyaVec3* GetVelocity() {
+		return (NyaVec3*)vVelocity;
+	}
+	inline NyaVec3* GetAngVelocity() {
+		return (NyaVec3*)vAngVelocity;
+	}
+#endif
 };
 
 class LiteDb {
@@ -292,3 +304,25 @@ auto lua_tolstring = (const char*(*)(void*, int, void*))0x5B4400;
 auto lua_getfield = (void(*)(void*, int, const char*))0x5B4AD0;
 auto lua_settop = (void(*)(void*, int))0x5B3C90;
 auto lua_gettable = (void(*)(void*, int))0x5B4A90;
+
+const char* GetCarName(int id) {
+	auto table = GetLiteDB()->GetTable(std::format("FlatOut2.Cars.Car[{}]", id).c_str());
+	return (const char*)table->GetPropertyPointer("Name");
+}
+
+const char* GetTrackName(int id) {
+	auto lua = pScriptHost->pLUAStruct->pLUAContext;
+	auto oldtop = lua_gettop(lua);
+
+	lua_getfield(lua, -10002, "Levels");
+	lua_rawgeti(lua, lua_gettop(lua), id);
+
+	auto oldtop2 = lua_gettop(lua);
+	lua_setglobal(lua, "Name");
+	lua_gettable(lua, oldtop2);
+	auto name = (const char*)lua_tolstring(lua, lua_gettop(lua), 0);
+
+	lua_settop(lua, oldtop);
+
+	return name;
+}

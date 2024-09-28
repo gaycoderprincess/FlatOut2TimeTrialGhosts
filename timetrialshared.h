@@ -48,7 +48,7 @@ void WriteLog(const std::string& str) {
 }
 
 struct tCarState {
-	tMatrix mat;
+	NyaMat4x4 mat;
 	NyaVec3 vel;
 	NyaVec3 tvel;
 	float quat[4];
@@ -63,12 +63,9 @@ struct tCarState {
 
 	void Collect(Player* pPlayer) {
 		auto car = pPlayer->pCar;
-		mat.a1 = car->mMatrix.a1;
-		mat.a2 = car->mMatrix.a2;
-		mat.a3 = car->mMatrix.a3;
-		mat.a4 = car->mMatrix.a4;
-		vel = car->vVelocity;
-		tvel = car->vAngVelocity;
+		mat = *car->GetMatrix();
+		vel = *car->GetVelocity();
+		tvel = *car->GetAngVelocity();
 		memcpy(quat, car->qQuaternion, sizeof(quat));
 		nitro = car->fNitro;
 		damage = car->fDamage;
@@ -84,12 +81,9 @@ struct tCarState {
 
 	void Apply(Player* pPlayer) {
 		auto car = pPlayer->pCar;
-		car->mMatrix.a1 = mat.a1;
-		car->mMatrix.a2 = mat.a2;
-		car->mMatrix.a3 = mat.a3;
-		car->mMatrix.a4 = mat.a4;
-		car->vVelocity = vel;
-		car->vAngVelocity = tvel;
+		*car->GetMatrix() = mat;
+		*car->GetVelocity() = vel;
+		*car->GetAngVelocity() = tvel;
 		memcpy(car->qQuaternion, quat, sizeof(quat));
 		car->fNitro = nitro;
 		car->fDamage = damage;
@@ -156,29 +150,6 @@ bool ShouldGhostRun() {
 	if (!GetPlayer(1)) return false;
 	if (IsPlayerStaging(localPlayer)) return false;
 	return true;
-}
-
-const char* GetCarName(int id) {
-	auto db = GetLiteDB();
-	auto table = db->GetTable(std::format("FlatOut2.Cars.Car[{}]", id).c_str());
-	return (const char*)table->GetPropertyPointer("Name");
-}
-
-const char* GetTrackName(int id) {
-	auto lua = pScriptHost->pLUAStruct->pLUAContext;
-	auto oldtop = lua_gettop(lua);
-
-	lua_getfield(lua, -10002, "Levels");
-	lua_rawgeti(lua, lua_gettop(lua), id);
-
-	auto oldtop2 = lua_gettop(lua);
-	lua_setglobal(lua, "Name");
-	lua_gettable(lua, oldtop2);
-	auto name = lua_tolstring(lua, lua_gettop(lua), 0);
-
-	lua_settop(lua, oldtop);
-
-	return name;
 }
 
 std::string RemoveSpacesFromString(const std::string& str) {
@@ -428,8 +399,14 @@ int GetCurrentPlaybackTick(tGhostSetup* ghost) {
 void RunGhost(Player* pPlayer) {
 	if (!pPlayer) return;
 
+#ifdef FLATOUT_UC
+	auto eventData = tEventData(EVENT_PLAYER_RESPAWN_GHOST);
+	eventData.data[3] = 1000;
+	pPlayer->TriggerEvent(&eventData);
+#else
 	int eventProperties[] = {PLAYEREVENT_RESPAWN_GHOST, 0, 0, 0, 1000};
 	pPlayer->TriggerEvent(eventProperties);
+#endif
 
 	bool isOpponent = pPlayer == GetPlayer(2);
 	if (!isOpponent) fGhostTime += 0.01;
@@ -445,7 +422,7 @@ void RunGhost(Player* pPlayer) {
 	if (b3LapMode) ghost = isOpponent ? &OpponentThreeLapPB : &ThreeLapPB;
 
 	if (ghost->aPBGhost.empty()) {
-		if (!bViewReplayMode) pPlayer->pCar->mMatrix.a4 = {500,-25,500};
+		if (!bViewReplayMode) pPlayer->pCar->GetMatrix()->p = {500,-25,500};
 		return;
 	}
 
@@ -527,9 +504,9 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 	}
 
 	if (nGhostVisuals == 2 && pPlayer == ghostPlayer) {
-		auto localPlayerPos = localPlayer->pCar->mMatrix.a4;
-		auto ghostPlayerPos = ghostPlayer->pCar->mMatrix.a4;
-		auto opponentGhostPlayerPos = opponentGhostPlayer->pCar->mMatrix.a4;
+		auto localPlayerPos = localPlayer->pCar->GetMatrix()->p;
+		auto ghostPlayerPos = ghostPlayer->pCar->GetMatrix()->p;
+		auto opponentGhostPlayerPos = opponentGhostPlayer->pCar->GetMatrix()->p;
 		SetGhostVisuals((localPlayerPos - ghostPlayerPos).length() < 8 || (localPlayerPos - opponentGhostPlayerPos).length() < 8);
 	}
 
@@ -544,9 +521,9 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 		if (bViewReplayMode) {
 			if (pPlayer == localPlayer) RunGhost(pPlayer);
 			if (pPlayer == ghostPlayer || pPlayer == opponentGhostPlayer) {
-				pPlayer->pCar->mMatrix.a4 = {500,-25,500};
-				pPlayer->pCar->vVelocity = {0,0,0};
-				pPlayer->pCar->vAngVelocity = {0,0,0};
+				pPlayer->pCar->GetMatrix()->p = {500,-25,500};
+				*pPlayer->pCar->GetVelocity() = {0,0,0};
+				*pPlayer->pCar->GetAngVelocity() = {0,0,0};
 				pPlayer->pCar->fGasPedal = 0;
 				pPlayer->pCar->fBrakePedal = 0;
 				pPlayer->pCar->fHandbrake = 1;
@@ -558,8 +535,8 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 		}
 	}
 	else if (pPlayer == ghostPlayer || pPlayer == opponentGhostPlayer) {
-		pPlayer->pCar->vVelocity = {0,0,0};
-		pPlayer->pCar->vAngVelocity = {0,0,0};
+		*pPlayer->pCar->GetVelocity() = {0,0,0};
+		*pPlayer->pCar->GetAngVelocity() = {0,0,0};
 		pPlayer->pCar->fGasPedal = 0;
 		pPlayer->pCar->fBrakePedal = 0;
 		pPlayer->pCar->fHandbrake = 1;
@@ -641,6 +618,7 @@ void DrawInputRectangle(float posX, float posY, float scaleX, float scaleY, floa
 }
 
 void DisplayInputs(tInputState* inputs) {
+#ifndef FLATOUT_UC
 	DrawInputTriangle((fInputBaseXPosition - 0.005) * GetAspectRatioInv(), fInputBaseYPosition, 0.08 * GetAspectRatioInv(), 0.07, 1 - (inputs->keys[INPUT_STEER_LEFT] / 128.0), true);
 	DrawInputTriangle((fInputBaseXPosition + 0.08) * GetAspectRatioInv(), fInputBaseYPosition, -0.08 * GetAspectRatioInv(), 0.07, inputs->keys[INPUT_STEER_RIGHT] / 128.0, false);
 	DrawInputTriangleY((fInputBaseXPosition + 0.0375) * GetAspectRatioInv(), fInputBaseYPosition - 0.05, 0.035 * GetAspectRatioInv(), 0.045, 1 - (inputs->keys[INPUT_ACCELERATE] / 128.0), true);
@@ -652,6 +630,7 @@ void DisplayInputs(tInputState* inputs) {
 	DrawInputRectangle((fInputBaseXPosition + 0.325) * GetAspectRatioInv(), fInputBaseYPosition + 0.05, 0.03 * GetAspectRatioInv(), 0.03, inputs->keys[INPUT_NITRO] / 128.0);
 	DrawInputRectangle((fInputBaseXPosition + 0.425) * GetAspectRatioInv(), fInputBaseYPosition + 0.05, 0.03 * GetAspectRatioInv(), 0.03, inputs->keys[INPUT_HANDBRAKE] / 128.0);
 	DrawInputRectangle((fInputBaseXPosition + 0.525) * GetAspectRatioInv(), fInputBaseYPosition + 0.05, 0.03 * GetAspectRatioInv(), 0.03, inputs->keys[INPUT_RESET] / 128.0);
+#endif
 }
 
 void DrawTimeText(tNyaStringData& data, const std::string& name, uint32_t pbTime, bool isTextHighlighted) {
