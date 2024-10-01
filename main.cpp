@@ -87,14 +87,52 @@ void __attribute__((naked)) GetPlayerCarASM() {
 	);
 }
 
+void __fastcall SetAISameCar(Player* pPlayer) {
+	pPlayer->nCarId = nPlayerCarID;
+
+	if (pPlayer->nPlayerId <= 2) return;
+	auto tmp = LoadTemporaryGhostForSpawning(pPlayer->nCarId);
+	if (!tmp->IsValid()) return;
+	if (tmp->sPlayerName[0] && pOpponentPlayerInfo) {
+		wcscpy_s(pOpponentPlayerInfo->sPlayerName, 16, tmp->sPlayerName.c_str());
+	}
+	if (tmp->nCarSkinId < 1 || tmp->nCarSkinId > 5/*GetNumSkinsForCar(pPlayer->nCarId)*/) return;
+	pPlayer->nCarSkinId = tmp->nCarSkinId;
+}
+
 uintptr_t AISameCarASM_jmp = 0x408A5D;
 void __attribute__((naked)) AISameCarASM() {
 	__asm__ (
-		"mov ecx, %1\n\t"
-		"mov [esi+0x340], ecx\n\t"
+		"pushad\n\t"
+		"mov ecx, esi\n\t"
+		"call %1\n\t"
+		"popad\n\t"
 		"jmp %0\n\t"
 			:
-			:  "m" (AISameCarASM_jmp), "m" (nPlayerCarID)
+			:  "m" (AISameCarASM_jmp), "i" (SetAISameCar)
+	);
+}
+
+void __attribute__((naked)) GetAINameASM() {
+	__asm__ (
+		"mov ecx, eax\n\t"
+		"lea edx, [esi-0x1E]\n\t"
+		"push ecx\n\t"
+		"push edx\n\t"
+		"push ebx\n\t"
+		"push ebp\n\t"
+		"push esi\n\t"
+		"push edi\n\t"
+		"call %0\n\t"
+		"pop edi\n\t"
+		"pop esi\n\t"
+		"pop ebp\n\t"
+		"pop ebx\n\t"
+		"pop edx\n\t"
+		"pop ecx\n\t"
+		"ret\n\t"
+			:
+			:  "i" (GetAIName)
 	);
 }
 
@@ -149,7 +187,7 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD fdwReason, LPVOID) {
 			if (bTimeTrialsEnabled) {
 				ProcessGhostCarsASM_call = NyaHookLib::PatchRelative(NyaHookLib::CALL, 0x409440, &ProcessGhostCarsASM);
 				ProcessPlayerCarsASM_call = NyaHookLib::PatchRelative(NyaHookLib::CALL, 0x46D5E9, &ProcessPlayerCarsASM);
-				NyaHookLib::PatchRelative(NyaHookLib::CALL, 0x45D9C7, &GetAIName);
+				NyaHookLib::PatchRelative(NyaHookLib::CALL, 0x45D9C7, &GetAINameASM);
 				NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x47CDAB, &FinishLapASM);
 				NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x408A54, &AISameCarASM);
 				NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x45DBFF, &GetPlayerCarASM);

@@ -167,8 +167,10 @@ public:
 	uint8_t _330[0xC];
 	Car* pCar;					// +33C
 	uint32_t nCarId;			// +340
-	uint32_t nSkinId;			// +344
-	uint8_t _348[0x2C];
+	uint32_t nCarSkinId;		// +344
+	uint8_t _348[0x20];
+	uint32_t nPlayerId;			// +368
+	uint8_t _36C[0x8];
 	uint32_t nStagingEngineRev;	// +374
 	uint8_t _378[0x324];
 	uint32_t nSomeFlags;		// +69C
@@ -196,6 +198,26 @@ public:
 	virtual void TriggerEvent(int* properties) = 0;
 };
 
+class PlayerInfo {
+public:
+	wchar_t sPlayerName[16]; // +0
+	int nCar; // +20
+	int nCarSkin; // +24
+	int nCarUpgrades; // +28
+	int nType; // +2C
+	int nController; // +30
+	int nCharType; // +34
+	int nPeerId; // +38
+	int nNetworkId; // +3C
+	uint8_t _40[0x10]; // +40
+};
+
+class PlayerProfile {
+public:
+	uint8_t _0[0xE34];
+	wchar_t sPlayerName[16]; // +E34
+};
+
 class PlayerHost {
 public:
 	uint8_t _0[0x14];
@@ -212,6 +234,8 @@ public:
 	float fNitroMultiplier;	// +4A4
 	uint8_t _4A8[0x510];
 	PlayerHost* pHost;		// +9B8
+	uint8_t _9BC[0x624];
+	PlayerProfile Profile;	// +FE0
 };
 auto& pGame = *(Game**)0x8E8410;
 

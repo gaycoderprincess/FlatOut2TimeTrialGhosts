@@ -1,4 +1,4 @@
-const int nLocalReplayVersion = 4;
+const int nLocalReplayVersion = 5;
 
 enum eLapType {
 	LAPTYPE_ROLLING,
@@ -115,9 +115,11 @@ struct tGhostSetup {
 	uint32_t nCurrentSessionPBTime = UINT_MAX;
 	float fTextHighlightTime = 0;
 	float fCurrentSessionTextHighlightTime = 0;
+	uint8_t nCarSkinId = 0;
+	std::wstring sPlayerName;
 
-	tGhostSetup() {
-		aGhosts.push_back(this);
+	tGhostSetup(bool addtoList = true) {
+		if (addtoList) aGhosts.push_back(this);
 	}
 
 	bool IsValid() {
@@ -232,6 +234,8 @@ void SavePB(tGhostSetup* ghost, int car, int track, uint8_t lapType) {
 	outFile.write((char*)&nUpgradeLevel, sizeof(nUpgradeLevel));
 	outFile.write((char*)&nHandlingMode, sizeof(nHandlingMode));
 	outFile.write((char*)&bTimeTrialIsFOUC, sizeof(bTimeTrialIsFOUC));
+	outFile.write((char*)&GetPlayer(0)->nCarSkinId, 1);
+	outFile.write((char*)pGame->Profile.sPlayerName, sizeof(pGame->Profile.sPlayerName));
 	int count = ghost->aPBGhost.size();
 	outFile.write((char*)&count, sizeof(count));
 	outFile.write((char*)&ghost->aPBGhost[0], sizeof(ghost->aPBGhost[0]) * count);
@@ -309,6 +313,9 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, bool isOpponent
 	int tmphandling = 0;
 	bool tmpfouc = false;
 	int tmpnitro = NITRO_FULL;
+	uint8_t tmpcarskin = 1;
+	wchar_t tmpplayername[16];
+	wcscpy_s(tmpplayername, 16, isOpponentGhost ? L"OPPONENT GHOST" : L"PB GHOST");
 	inFile.read((char*)&tmpcar, sizeof(tmpcar));
 	inFile.read((char*)&tmptrack, sizeof(tmptrack));
 	inFile.read((char*)&tmptime, sizeof(tmptime));
@@ -321,6 +328,11 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, bool isOpponent
 		inFile.read((char*)&tmpupgrade, sizeof(tmpupgrade));
 		inFile.read((char*)&tmphandling, sizeof(tmphandling));
 		inFile.read((char*)&tmpfouc, sizeof(tmpfouc));
+	}
+	if (fileVersion >= 5) {
+		inFile.read((char*)&tmpcarskin, sizeof(tmpcarskin));
+		inFile.read((char*)tmpplayername, sizeof(tmpplayername));
+		tmpplayername[15]=0;
 	}
 	if (tmpsize != sizeof(tCarState)) {
 		WriteLog("Outdated ghost for " + fileName);
@@ -342,6 +354,8 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, bool isOpponent
 			return;
 		}
 	}
+	ghost->nCarSkinId = tmpcarskin;
+	ghost->sPlayerName = tmpplayername;
 	ghost->nPBTime = tmptime;
 	int count = 0;
 	inFile.read((char*)&count, sizeof(count));
@@ -579,9 +593,29 @@ void __fastcall OnFinishLap(uint32_t lapTime) {
 	fGhostRecordTotalTime = 0;
 }
 
-const wchar_t* GetAIName() {
-	static bool bType = false;
-	bType = !bType;
+tGhostSetup* LoadTemporaryGhostForSpawning(int carId) {
+	WriteLog(std::format("Loading temporary ghost for {} {}", GetCarName(carId), GetTrackName(pGame->nLevelId)));
+
+	static tGhostSetup tmp(false);
+	tmp = tGhostSetup(false);
+	if (b3LapMode) {
+		LoadPB(&tmp, carId, pGame->nLevelId, LAPTYPE_THREELAP, true);
+	} else {
+		// load rolling, fallback to standing
+		LoadPB(&tmp, carId, pGame->nLevelId, LAPTYPE_STANDING, true);
+		tGhostSetup tmp2(false);
+		LoadPB(&tmp2, carId, pGame->nLevelId, LAPTYPE_ROLLING, true);
+		if (tmp2.IsValid()) tmp = tmp2;
+	}
+	return &tmp;
+}
+
+PlayerInfo* pOpponentPlayerInfo = nullptr;
+const wchar_t* __fastcall GetAIName(int id, PlayerInfo* playerInfo) {
+	pOpponentPlayerInfo = nullptr;
+
+	bool bType = id == 0;
+	if (!bType) pOpponentPlayerInfo = playerInfo;
 	return bType ? L"PB GHOST" : L"OPPONENT GHOST";
 }
 
