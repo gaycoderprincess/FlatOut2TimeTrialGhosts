@@ -718,7 +718,23 @@ void HookLoop() {
 #endif
 			data.size = 0.04;
 			data.XRightAlign = true;
+#ifdef FLATOUT_UC
+			if (DoesTrackValueExist(pGame->nLevelId, "ForceOneLapOnly")) {
+				if (bPBTimeDisplayEnabled) {
+					DrawTimeText(data, "Best Time: ", StandingLapPB.nPBTime, StandingLapPB.fTextHighlightTime > 0);
+				}
+				if (bCurrentSessionPBTimeDisplayEnabled) {
+					DrawTimeText(data, "Best Time (Session): ", StandingLapPB.nCurrentSessionPBTime,
+								 StandingLapPB.fCurrentSessionTextHighlightTime > 0);
+				}
+				if (bPBTimeDisplayEnabled && OpponentStandingLapPB.IsValid()) {
+					DrawTimeText(data, "Opponent's Best Time: ", OpponentStandingLapPB.nPBTime, OpponentStandingLapPB.fTextHighlightTime > 0);
+				}
+			}
+			else if (b3LapMode) {
+#else
 			if (b3LapMode) {
+#endif
 				if (bPBTimeDisplayEnabled) {
 					DrawTimeText(data, "Best Time: ", ThreeLapPB.nPBTime, ThreeLapPB.fTextHighlightTime > 0);
 				}
