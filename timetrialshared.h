@@ -235,7 +235,7 @@ void SavePB(tGhostSetup* ghost, int car, int track, uint8_t lapType) {
 	outFile.write((char*)&nHandlingMode, sizeof(nHandlingMode));
 	outFile.write((char*)&bTimeTrialIsFOUC, sizeof(bTimeTrialIsFOUC));
 	outFile.write((char*)&GetPlayer(0)->nCarSkinId, 1);
-	outFile.write((char*)pGame->Profile.sPlayerName, sizeof(pGame->Profile.sPlayerName));
+	outFile.write((char*)pGameFlow->Profile.sPlayerName, sizeof(pGameFlow->Profile.sPlayerName));
 	int count = ghost->aPBGhost.size();
 	outFile.write((char*)&count, sizeof(count));
 	outFile.write((char*)&ghost->aPBGhost[0], sizeof(ghost->aPBGhost[0]) * count);
@@ -377,14 +377,14 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, bool isOpponent
 
 void ResetAndLoadPBGhost() {
 	if (b3LapMode) {
-		LoadPB(&ThreeLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, LAPTYPE_THREELAP, false);
-		LoadPB(&OpponentThreeLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, LAPTYPE_THREELAP, true);
+		LoadPB(&ThreeLapPB, GetPlayer(0)->nCarId, pGameFlow->nLevelId, LAPTYPE_THREELAP, false);
+		LoadPB(&OpponentThreeLapPB, GetPlayer(0)->nCarId, pGameFlow->nLevelId, LAPTYPE_THREELAP, true);
 	}
 	else {
-		LoadPB(&StandingLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, LAPTYPE_STANDING, false);
-		LoadPB(&RollingLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, LAPTYPE_ROLLING, false);
-		LoadPB(&OpponentStandingLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, LAPTYPE_STANDING, true);
-		LoadPB(&OpponentRollingLapPB, GetPlayer(0)->nCarId, pGame->nLevelId, LAPTYPE_ROLLING, true);
+		LoadPB(&StandingLapPB, GetPlayer(0)->nCarId, pGameFlow->nLevelId, LAPTYPE_STANDING, false);
+		LoadPB(&RollingLapPB, GetPlayer(0)->nCarId, pGameFlow->nLevelId, LAPTYPE_ROLLING, false);
+		LoadPB(&OpponentStandingLapPB, GetPlayer(0)->nCarId, pGameFlow->nLevelId, LAPTYPE_STANDING, true);
+		LoadPB(&OpponentRollingLapPB, GetPlayer(0)->nCarId, pGameFlow->nLevelId, LAPTYPE_ROLLING, true);
 	}
 	bGhostLoaded = true;
 }
@@ -497,16 +497,16 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 
 	switch (nNitroType) {
 		case NITRO_NONE:
-			pGame->fNitroMultiplier = 0;
+			pGameFlow->fNitroMultiplier = 0;
 			break;
 		case NITRO_FULL:
-			pGame->fNitroMultiplier = 1;
+			pGameFlow->fNitroMultiplier = 1;
 			break;
 		case NITRO_DOUBLE:
-			pGame->fNitroMultiplier = 2;
+			pGameFlow->fNitroMultiplier = 2;
 			break;
 		case NITRO_INFINITE:
-			pGame->fNitroMultiplier = 50;
+			pGameFlow->fNitroMultiplier = 50;
 			break;
 		default:
 			break;
@@ -579,7 +579,7 @@ void __fastcall OnFinishLap(uint32_t lapTime) {
 			ghost->aPBInputs = aRecordingInputs;
 			ghost->nPBTime = replayTime;
 			ghost->fTextHighlightTime = 5;
-			SavePB(ghost, GetPlayer(0)->nCarId, pGame->nLevelId, b3LapMode ? LAPTYPE_THREELAP : isFirstLap);
+			SavePB(ghost, GetPlayer(0)->nCarId, pGameFlow->nLevelId, b3LapMode ? LAPTYPE_THREELAP : isFirstLap);
 		}
 		if (replayTime < ghost->nCurrentSessionPBTime) {
 			ghost->nCurrentSessionPBTime = replayTime;
@@ -594,17 +594,17 @@ void __fastcall OnFinishLap(uint32_t lapTime) {
 }
 
 tGhostSetup* LoadTemporaryGhostForSpawning(int carId) {
-	WriteLog(std::format("Loading temporary ghost for {} {}", GetCarName(carId), GetTrackName(pGame->nLevelId)));
+	WriteLog(std::format("Loading temporary ghost for {} {}", GetCarName(carId), GetTrackName(pGameFlow->nLevelId)));
 
 	static tGhostSetup tmp(false);
 	tmp = tGhostSetup(false);
 	if (b3LapMode) {
-		LoadPB(&tmp, carId, pGame->nLevelId, LAPTYPE_THREELAP, true);
+		LoadPB(&tmp, carId, pGameFlow->nLevelId, LAPTYPE_THREELAP, true);
 	} else {
 		// load rolling, fallback to standing
-		LoadPB(&tmp, carId, pGame->nLevelId, LAPTYPE_STANDING, true);
+		LoadPB(&tmp, carId, pGameFlow->nLevelId, LAPTYPE_STANDING, true);
 		tGhostSetup tmp2(false);
-		LoadPB(&tmp2, carId, pGame->nLevelId, LAPTYPE_ROLLING, true);
+		LoadPB(&tmp2, carId, pGameFlow->nLevelId, LAPTYPE_ROLLING, true);
 		if (tmp2.IsValid()) tmp = tmp2;
 	}
 	return &tmp;
@@ -719,7 +719,7 @@ void HookLoop() {
 			data.size = 0.04;
 			data.XRightAlign = true;
 #ifdef FLATOUT_UC
-			if (DoesTrackValueExist(pGame->nLevelId, "ForceOneLapOnly")) {
+			if (DoesTrackValueExist(pGameFlow->nLevelId, "ForceOneLapOnly")) {
 				if (bPBTimeDisplayEnabled) {
 					DrawTimeText(data, "Best Time: ", StandingLapPB.nPBTime, StandingLapPB.fTextHighlightTime > 0);
 				}
@@ -771,9 +771,9 @@ void HookLoop() {
 
 #ifdef FLATOUT_UC
 	// uninit time trials once we're back in the menu
-	if (bChloeCollectionIntegration && pGame) {
-		static auto nLastGameState = pGame->nGameState;
-		auto currentGameState = pGame->nGameState;
+	if (bChloeCollectionIntegration && pGameFlow) {
+		static auto nLastGameState = pGameFlow->nGameState;
+		auto currentGameState = pGameFlow->nGameState;
 		if (currentGameState != nLastGameState) {
 			if (currentGameState == GAME_STATE_MENU && bTimeTrialsEnabled) {
 				UninitTimeTrials();

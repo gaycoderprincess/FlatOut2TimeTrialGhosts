@@ -224,7 +224,7 @@ public:
 	Player** aPlayers;
 };
 
-class Game {
+class GameFlow {
 public:
 	uint8_t _0[0x480];
 	int nLevelId;			// +480
@@ -237,7 +237,7 @@ public:
 	uint8_t _9BC[0x624];
 	PlayerProfile Profile;	// +FE0
 };
-auto& pGame = *(Game**)0x8E8410;
+auto& pGameFlow = *(GameFlow**)0x8E8410;
 
 class PlayerScoreRace {
 public:
@@ -275,7 +275,7 @@ public:
 };
 
 Player* GetPlayer(int id) {
-	auto host = pGame->pHost;
+	auto host = pGameFlow->pHost;
 	if (!host) return nullptr;
 	auto players = host->aPlayers;
 	if (!players) return nullptr;
