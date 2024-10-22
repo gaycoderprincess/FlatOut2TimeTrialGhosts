@@ -27,6 +27,8 @@ bool bLastRaceWasTimeTrial = false;
 bool bReplayIgnoreMismatches = false;
 bool b3LapMode = false;
 bool bIsCareerMode = false;
+bool bDisplayGhostsInCareer = false;
+bool bDisplayAuthorInCareer = false;
 
 #ifdef FLATOUT_UC
 bool bTimeTrialIsFOUC = true;
@@ -96,7 +98,7 @@ struct tCarState {
 #ifndef FLATOUT_UC
 		car->mGearbox.nGear = gear;
 #endif
-		if (bIsCareerMode) {
+		if (bIsCareerMode && !bDisplayGhostsInCareer) {
 			car->GetMatrix()->p.y -= 25;
 		}
 	}
@@ -142,7 +144,7 @@ tGhostSetup OpponentRollingLapPB;
 tGhostSetup OpponentStandingLapPB;
 tGhostSetup OpponentThreeLapPB;
 
-tGhostSetup OpponentsCareer[3];
+tGhostSetup OpponentsCareer[4];
 
 bool bGhostLoaded = false;
 double fGhostTime = 0;
@@ -389,7 +391,7 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, int opponentTyp
 
 void ResetAndLoadPBGhost() {
 	if (bIsCareerMode) {
-		for (int i = 0; i < 3; i++) {
+		for (int i = 0; i < 4; i++) {
 			LoadPB(&OpponentsCareer[i], GetPlayer(0)->nCarId, pGameFlow->nLevelId, LAPTYPE_STANDING, i+1);
 		}
 	}
@@ -512,21 +514,26 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 	auto opponentGhostPlayer = GetPlayer(2);
 	if (!localPlayer || !ghostPlayer || !opponentGhostPlayer) return;
 
-	switch (nNitroType) {
-		case NITRO_NONE:
-			pGameFlow->fNitroMultiplier = 0;
-			break;
-		case NITRO_FULL:
-			pGameFlow->fNitroMultiplier = 1;
-			break;
-		case NITRO_DOUBLE:
-			pGameFlow->fNitroMultiplier = 2;
-			break;
-		case NITRO_INFINITE:
-			pGameFlow->fNitroMultiplier = 50;
-			break;
-		default:
-			break;
+	if (bIsCareerMode) {
+		pGameFlow->fNitroMultiplier = 0;
+	}
+	else {
+		switch (nNitroType) {
+			case NITRO_NONE:
+				pGameFlow->fNitroMultiplier = 0;
+				break;
+			case NITRO_FULL:
+				pGameFlow->fNitroMultiplier = 1;
+				break;
+			case NITRO_DOUBLE:
+				pGameFlow->fNitroMultiplier = 2;
+				break;
+			case NITRO_INFINITE:
+				pGameFlow->fNitroMultiplier = 50;
+				break;
+			default:
+				break;
+		}
 	}
 
 	if (playerId == 0) {
@@ -641,6 +648,7 @@ const wchar_t* __fastcall GetAIName(int id, PlayerInfo* playerInfo) {
 			L"GOLD",
 			L"SILVER",
 			L"BRONZE",
+			L"AUTHOR",
 	};
 
 	pOpponentPlayerInfo = nullptr;
@@ -750,6 +758,7 @@ void HookLoop() {
 			data.XRightAlign = true;
 #ifdef FLATOUT_UC
 			if (bIsCareerMode) {
+				DrawTimeText(data, "Author: ", OpponentsCareer[3].nPBTime, false);
 				DrawTimeText(data, "Gold: ", OpponentsCareer[0].nPBTime, false);
 				DrawTimeText(data, "Silver: ", OpponentsCareer[1].nPBTime, false);
 				DrawTimeText(data, "Bronze: ", OpponentsCareer[2].nPBTime, false);
