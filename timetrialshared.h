@@ -26,6 +26,7 @@ bool bChloeCollectionIntegration = false;
 bool bLastRaceWasTimeTrial = false;
 bool bReplayIgnoreMismatches = false;
 bool b3LapMode = false;
+bool bIsCareerMode = false;
 
 #ifdef FLATOUT_UC
 bool bTimeTrialIsFOUC = true;
@@ -95,6 +96,9 @@ struct tCarState {
 #ifndef FLATOUT_UC
 		car->mGearbox.nGear = gear;
 #endif
+		if (bIsCareerMode) {
+			car->GetMatrix()->p.y -= 25;
+		}
 	}
 };
 
@@ -138,6 +142,8 @@ tGhostSetup OpponentRollingLapPB;
 tGhostSetup OpponentStandingLapPB;
 tGhostSetup OpponentThreeLapPB;
 
+tGhostSetup OpponentsCareer[3];
+
 bool bGhostLoaded = false;
 double fGhostTime = 0;
 double fGhostRecordTotalTime = 0;
@@ -166,9 +172,12 @@ std::string RemoveSpacesFromString(const std::string& str) {
 	return newStr;
 }
 
-std::string GetGhostFilename(int car, int track, int lapType, bool isOpponentGhost, bool useLegacyNaming) {
+std::string GetGhostFilename(int car, int track, int lapType, int opponentType, bool useLegacyNaming) {
 	std::string path = "Ghosts/";
-	if (isOpponentGhost) path += "Opponents/";
+	if (bIsCareerMode) {
+		path += "Career/";
+	}
+	else if (opponentType) path += "Opponents/";
 
 	if (useLegacyNaming) {
 		path += "Track" + std::to_string(track) + "_Car" + std::to_string(car + 1);
@@ -197,6 +206,9 @@ std::string GetGhostFilename(int car, int track, int lapType, bool isOpponentGho
 	}
 	if (nHandlingMode) {
 		path += (useLegacyNaming ? "_handling" : "_hnd") + std::to_string(nHandlingMode);
+	}
+	if (bIsCareerMode && opponentType) {
+		path += "_" + std::to_string(opponentType);
 	}
 #ifdef FLATOUT_UC
 	path += ".fouc";
@@ -242,7 +254,7 @@ void SavePB(tGhostSetup* ghost, int car, int track, uint8_t lapType) {
 	outFile.write((char*)&ghost->aPBInputs[0], sizeof(ghost->aPBInputs[0]) * count);
 }
 
-void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, bool isOpponentGhost) {
+void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, int opponentType) {
 	// reset current session PBs if we're loading a different track/car combo
 	{
 		static int prevCar = -1;
@@ -272,10 +284,10 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, bool isOpponent
 	ghost->nPBTime = UINT_MAX;
 	ghost->fTextHighlightTime = 0;
 
-	auto fileName = GetGhostFilename(car, track, lapType, isOpponentGhost, false);
+	auto fileName = GetGhostFilename(car, track, lapType, opponentType, false);
 	auto inFile = std::ifstream(fileName, std::ios::in | std::ios::binary);
 	if (!inFile.is_open()) {
-		auto legacyFileName = GetGhostFilename(car, track, lapType, isOpponentGhost, true);
+		auto legacyFileName = GetGhostFilename(car, track, lapType, opponentType, true);
 		inFile = std::ifstream(legacyFileName, std::ios::in | std::ios::binary);
 		if (!inFile.is_open()) {
 			WriteLog("No ghost found for " + fileName);
@@ -284,7 +296,7 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, bool isOpponent
 		inFile.close();
 		WriteLog("Legacy ghost found, renaming " + legacyFileName + " to " + fileName);
 		std::filesystem::rename(legacyFileName, fileName);
-		return LoadPB(ghost, car, track, lapType, isOpponentGhost);
+		return LoadPB(ghost, car, track, lapType, opponentType);
 	}
 
 	int tmpsize;
@@ -315,7 +327,7 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, bool isOpponent
 	int tmpnitro = NITRO_FULL;
 	uint8_t tmpcarskin = 1;
 	wchar_t tmpplayername[16];
-	wcscpy_s(tmpplayername, 16, isOpponentGhost ? L"OPPONENT GHOST" : L"PB GHOST");
+	wcscpy_s(tmpplayername, 16, opponentType ? L"OPPONENT GHOST" : L"PB GHOST");
 	inFile.read((char*)&tmpcar, sizeof(tmpcar));
 	inFile.read((char*)&tmptrack, sizeof(tmptrack));
 	inFile.read((char*)&tmptime, sizeof(tmptime));
@@ -376,7 +388,12 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, bool isOpponent
 }
 
 void ResetAndLoadPBGhost() {
-	if (b3LapMode) {
+	if (bIsCareerMode) {
+		for (int i = 0; i < 3; i++) {
+			LoadPB(&OpponentsCareer[i], GetPlayer(0)->nCarId, pGameFlow->nLevelId, LAPTYPE_STANDING, i+1);
+		}
+	}
+	else if (b3LapMode) {
 		LoadPB(&ThreeLapPB, GetPlayer(0)->nCarId, pGameFlow->nLevelId, LAPTYPE_THREELAP, false);
 		LoadPB(&OpponentThreeLapPB, GetPlayer(0)->nCarId, pGameFlow->nLevelId, LAPTYPE_THREELAP, true);
 	}
@@ -422,18 +439,23 @@ void RunGhost(Player* pPlayer) {
 	pPlayer->TriggerEvent(eventProperties);
 #endif
 
-	bool isOpponent = pPlayer == GetPlayer(2);
-	if (!isOpponent) fGhostTime += 0.01;
+	int playerId = pPlayer->nPlayerId-1;
+	if (playerId == 1) fGhostTime += 0.01;
 
 	auto ply = GetPlayerScore<PlayerScoreRace>(1);
 	tGhostSetup* ghost = nullptr;
-	if (isOpponent) {
-		ghost = ply->nCurrentLap == 0 ? &OpponentStandingLapPB : &OpponentRollingLapPB;
+	if (bIsCareerMode) {
+		ghost = &OpponentsCareer[playerId-1];
 	}
 	else {
-		ghost = ply->nCurrentLap == 0 ? &StandingLapPB : &RollingLapPB;
+		bool isOpponent = playerId > 1;
+		if (isOpponent) {
+			ghost = ply->nCurrentLap == 0 ? &OpponentStandingLapPB : &OpponentRollingLapPB;
+		} else {
+			ghost = ply->nCurrentLap == 0 ? &StandingLapPB : &RollingLapPB;
+		}
+		if (b3LapMode) ghost = isOpponent ? &OpponentThreeLapPB : &ThreeLapPB;
 	}
-	if (b3LapMode) ghost = isOpponent ? &OpponentThreeLapPB : &ThreeLapPB;
 
 	if (ghost->aPBGhost.empty()) {
 		if (!bViewReplayMode) pPlayer->pCar->GetMatrix()->p = {500,-25,500};
@@ -484,16 +506,11 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 
 	if (bViewReplayMode) SetPlayerControl(true);
 
+	auto playerId = pPlayer->nPlayerId-1;
 	auto localPlayer = GetPlayer(0);
 	auto ghostPlayer = GetPlayer(1);
 	auto opponentGhostPlayer = GetPlayer(2);
 	if (!localPlayer || !ghostPlayer || !opponentGhostPlayer) return;
-
-	if (pPlayer == localPlayer) {
-		for (auto ghost : aGhosts) {
-			ghost->UpdateTextHighlight();
-		}
-	}
 
 	switch (nNitroType) {
 		case NITRO_NONE:
@@ -512,12 +529,15 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 			break;
 	}
 
-	if (pPlayer == localPlayer) {
+	if (playerId == 0) {
+		for (auto ghost : aGhosts) {
+			ghost->UpdateTextHighlight();
+		}
 		if (nNitroType == NITRO_NONE) pPlayer->pCar->fNitro = 0;
 		if (nNitroType == NITRO_INFINITE) pPlayer->pCar->fNitro = 10;
 	}
 
-	if (nGhostVisuals == 2 && pPlayer == ghostPlayer) {
+	if (nGhostVisuals == 2 && playerId == 0) {
 		auto localPlayerPos = localPlayer->pCar->GetMatrix()->p;
 		auto ghostPlayerPos = ghostPlayer->pCar->GetMatrix()->p;
 		auto opponentGhostPlayerPos = opponentGhostPlayer->pCar->GetMatrix()->p;
@@ -533,8 +553,8 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 		if (!bGhostLoaded) ResetAndLoadPBGhost();
 
 		if (bViewReplayMode) {
-			if (pPlayer == localPlayer) RunGhost(pPlayer);
-			if (pPlayer == ghostPlayer || pPlayer == opponentGhostPlayer) {
+			if (playerId == 0) RunGhost(pPlayer);
+			else {
 				pPlayer->pCar->GetMatrix()->p = {500,-25,500};
 				*pPlayer->pCar->GetVelocity() = {0,0,0};
 				*pPlayer->pCar->GetAngVelocity() = {0,0,0};
@@ -544,11 +564,12 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 			}
 		}
 		else {
-			if (pPlayer == ghostPlayer || pPlayer == opponentGhostPlayer) RunGhost(pPlayer);
-			if (pPlayer == localPlayer) RecordGhost(pPlayer);
+			if (playerId == 0) RecordGhost(pPlayer);
+			else RunGhost(pPlayer);
 		}
 	}
-	else if (pPlayer == ghostPlayer || pPlayer == opponentGhostPlayer) {
+	else if (playerId != 0) {
+		pPlayer->pCar->GetMatrix()->p = {500,-25,500};
 		*pPlayer->pCar->GetVelocity() = {0,0,0};
 		*pPlayer->pCar->GetAngVelocity() = {0,0,0};
 		pPlayer->pCar->fGasPedal = 0;
@@ -612,11 +633,20 @@ tGhostSetup* LoadTemporaryGhostForSpawning(int carId) {
 
 PlayerInfo* pOpponentPlayerInfo = nullptr;
 const wchar_t* __fastcall GetAIName(int id, PlayerInfo* playerInfo) {
+	const wchar_t* aAINames[] = {
+			L"PB GHOST",
+			L"OPPONENT GHOST",
+	};
+	const wchar_t* aAINamesCareer[] = {
+			L"GOLD",
+			L"SILVER",
+			L"BRONZE",
+	};
+
 	pOpponentPlayerInfo = nullptr;
 
-	bool bType = id == 0;
-	if (!bType) pOpponentPlayerInfo = playerInfo;
-	return bType ? L"PB GHOST" : L"OPPONENT GHOST";
+	if (id == 1 && !bIsCareerMode) pOpponentPlayerInfo = playerInfo;
+	return bIsCareerMode ? aAINamesCareer[id] : aAINames[id];
 }
 
 auto gInputRGBBackground = NyaDrawing::CNyaRGBA32(215,215,215,255);
@@ -719,7 +749,11 @@ void HookLoop() {
 			data.size = 0.04;
 			data.XRightAlign = true;
 #ifdef FLATOUT_UC
-			if (DoesTrackValueExist(pGameFlow->nLevelId, "ForceOneLapOnly")) {
+			if (bIsCareerMode) {
+				DrawTimeText(data, "Gold: ", OpponentsCareer[0].nPBTime, false);
+				DrawTimeText(data, "Silver: ", OpponentsCareer[1].nPBTime, false);
+				DrawTimeText(data, "Bronze: ", OpponentsCareer[2].nPBTime, false);
+			} else if (DoesTrackValueExist(pGameFlow->nLevelId, "ForceOneLapOnly")) {
 				if (bPBTimeDisplayEnabled) {
 					DrawTimeText(data, "Best Time: ", StandingLapPB.nPBTime, StandingLapPB.fTextHighlightTime > 0);
 				}
