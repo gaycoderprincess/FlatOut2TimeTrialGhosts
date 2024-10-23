@@ -99,7 +99,7 @@ struct tCarState {
 		car->mGearbox.nGear = gear;
 #endif
 		if (bIsCareerMode && !bDisplayGhostsInCareer) {
-			car->GetMatrix()->p.y -= 25;
+			car->GetMatrix()->p.y -= 50;
 		}
 	}
 };
@@ -187,24 +187,26 @@ std::string GetGhostFilename(int car, int track, int lapType, int opponentType, 
 	else {
 		path += RemoveSpacesFromString(GetTrackName(track)) + (std::string)"_" + RemoveSpacesFromString(GetCarName(car));
 	}
-	if (bNoProps) path += "_noprops";
-	if (lapType == LAPTYPE_STANDING) path += "_lap1";
-	if (lapType == LAPTYPE_THREELAP) path += "_3lap";
-	switch (nNitroType) {
-		case NITRO_NONE:
-			path += useLegacyNaming ? "_nonitro" : "_0x";
-			break;
-		case NITRO_DOUBLE:
-			path += useLegacyNaming ? "_2xnitro" : "_2x";
-			break;
-		case NITRO_INFINITE:
-			path += useLegacyNaming ? "_infnitro" : "_inf";
-			break;
-		default:
-			break;
-	}
-	if (nUpgradeLevel) {
-		path += (useLegacyNaming ? "_upgrade" : "_up") + std::to_string(nUpgradeLevel);
+	if (!bIsCareerMode) {
+		if (bNoProps) path += "_noprops";
+		if (lapType == LAPTYPE_STANDING) path += "_lap1";
+		if (lapType == LAPTYPE_THREELAP) path += "_3lap";
+		switch (nNitroType) {
+			case NITRO_NONE:
+				path += useLegacyNaming ? "_nonitro" : "_0x";
+				break;
+			case NITRO_DOUBLE:
+				path += useLegacyNaming ? "_2xnitro" : "_2x";
+				break;
+			case NITRO_INFINITE:
+				path += useLegacyNaming ? "_infnitro" : "_inf";
+				break;
+			default:
+				break;
+		}
+		if (nUpgradeLevel) {
+			path += (useLegacyNaming ? "_upgrade" : "_up") + std::to_string(nUpgradeLevel);
+		}
 	}
 	if (nHandlingMode) {
 		path += (useLegacyNaming ? "_handling" : "_hnd") + std::to_string(nHandlingMode);
@@ -758,7 +760,7 @@ void HookLoop() {
 			data.XRightAlign = true;
 #ifdef FLATOUT_UC
 			if (bIsCareerMode) {
-				DrawTimeText(data, "Author: ", OpponentsCareer[3].nPBTime, false);
+				if (OpponentsCareer[3].IsValid()) DrawTimeText(data, "Author: ", OpponentsCareer[3].nPBTime, false);
 				DrawTimeText(data, "Gold: ", OpponentsCareer[0].nPBTime, false);
 				DrawTimeText(data, "Silver: ", OpponentsCareer[1].nPBTime, false);
 				DrawTimeText(data, "Bronze: ", OpponentsCareer[2].nPBTime, false);
