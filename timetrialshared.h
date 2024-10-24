@@ -132,6 +132,10 @@ struct tGhostSetup {
 		return nPBTime != UINT_MAX;
 	}
 
+	bool IsSessionValid() {
+		return nCurrentSessionPBTime != UINT_MAX;
+	}
+
 	void UpdateTextHighlight() {
 		if (fTextHighlightTime > 0) fTextHighlightTime -= 0.01;
 		if (fCurrentSessionTextHighlightTime > 0) fCurrentSessionTextHighlightTime -= 0.01;
@@ -144,7 +148,7 @@ tGhostSetup OpponentRollingLapPB;
 tGhostSetup OpponentStandingLapPB;
 tGhostSetup OpponentThreeLapPB;
 
-tGhostSetup OpponentsCareer[4];
+tGhostSetup OpponentsCareer[5];
 
 bool bGhostLoaded = false;
 double fGhostTime = 0;
@@ -167,6 +171,7 @@ std::string RemoveSpacesFromString(const std::string& str) {
 
 	while (true) {
 		auto pos = newStr.find(' ');
+		if (pos == std::string::npos) pos = newStr.find('\'');
 		if (pos == std::string::npos) break;
 		newStr.erase(newStr.begin() + pos);
 	}
@@ -393,9 +398,10 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, int opponentTyp
 
 void ResetAndLoadPBGhost() {
 	if (bIsCareerMode) {
-		for (int i = 0; i < 4; i++) {
+		for (int i = 0; i < 5; i++) {
 			LoadPB(&OpponentsCareer[i], GetPlayer(0)->nCarId, pGameFlow->nLevelId, LAPTYPE_STANDING, i+1);
 		}
+		LoadPB(&StandingLapPB, GetPlayer(0)->nCarId, pGameFlow->nLevelId, LAPTYPE_STANDING, false);
 	}
 	else if (b3LapMode) {
 		LoadPB(&ThreeLapPB, GetPlayer(0)->nCarId, pGameFlow->nLevelId, LAPTYPE_THREELAP, false);
@@ -517,7 +523,7 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 	if (!localPlayer || !ghostPlayer || !opponentGhostPlayer) return;
 
 	if (bIsCareerMode) {
-		pGameFlow->fNitroMultiplier = 0;
+		pGameFlow->fNitroMultiplier = DoesTrackValueExist(pGameFlow->nLevelId, "ForceOneLapOnly") ? 0.0 : 1.0;
 	}
 	else {
 		switch (nNitroType) {
@@ -609,7 +615,9 @@ void __fastcall OnFinishLap(uint32_t lapTime) {
 			ghost->aPBInputs = aRecordingInputs;
 			ghost->nPBTime = replayTime;
 			ghost->fTextHighlightTime = 5;
-			SavePB(ghost, GetPlayer(0)->nCarId, pGameFlow->nLevelId, b3LapMode ? LAPTYPE_THREELAP : isFirstLap);
+			auto lapType = b3LapMode ? LAPTYPE_THREELAP : isFirstLap;
+			if (bIsCareerMode) lapType = LAPTYPE_STANDING;
+			SavePB(ghost, GetPlayer(0)->nCarId, pGameFlow->nLevelId, lapType);
 		}
 		if (replayTime < ghost->nCurrentSessionPBTime) {
 			ghost->nCurrentSessionPBTime = replayTime;
@@ -628,7 +636,10 @@ tGhostSetup* LoadTemporaryGhostForSpawning(int carId) {
 
 	static tGhostSetup tmp(false);
 	tmp = tGhostSetup(false);
-	if (b3LapMode) {
+	if (bIsCareerMode) {
+		LoadPB(&tmp, carId, pGameFlow->nLevelId, LAPTYPE_STANDING, 5);
+	}
+	else if (b3LapMode) {
 		LoadPB(&tmp, carId, pGameFlow->nLevelId, LAPTYPE_THREELAP, true);
 	} else {
 		// load rolling, fallback to standing
@@ -651,11 +662,13 @@ const wchar_t* __fastcall GetAIName(int id, PlayerInfo* playerInfo) {
 			L"SILVER",
 			L"BRONZE",
 			L"AUTHOR",
+			L"SUPER AUTHOR",
 	};
 
 	pOpponentPlayerInfo = nullptr;
 
 	if (id == 1 && !bIsCareerMode) pOpponentPlayerInfo = playerInfo;
+	if (id == 4 && bIsCareerMode) pOpponentPlayerInfo = playerInfo;
 	return bIsCareerMode ? aAINamesCareer[id] : aAINames[id];
 }
 
@@ -760,10 +773,17 @@ void HookLoop() {
 			data.XRightAlign = true;
 #ifdef FLATOUT_UC
 			if (bIsCareerMode) {
+				if (OpponentsCareer[4].IsValid()) DrawTimeText(data, "Super Author: ", OpponentsCareer[4].nPBTime, false);
 				if (OpponentsCareer[3].IsValid()) DrawTimeText(data, "Author: ", OpponentsCareer[3].nPBTime, false);
 				DrawTimeText(data, "Gold: ", OpponentsCareer[0].nPBTime, false);
 				DrawTimeText(data, "Silver: ", OpponentsCareer[1].nPBTime, false);
 				DrawTimeText(data, "Bronze: ", OpponentsCareer[2].nPBTime, false);
+				if (bPBTimeDisplayEnabled && StandingLapPB.IsValid()) {
+					DrawTimeText(data, "Best Time: ", StandingLapPB.nPBTime, StandingLapPB.fTextHighlightTime > 0);
+				}
+				if (bCurrentSessionPBTimeDisplayEnabled && StandingLapPB.IsSessionValid()) {
+					DrawTimeText(data, "Best Time (Session): ", StandingLapPB.nCurrentSessionPBTime, StandingLapPB.fCurrentSessionTextHighlightTime > 0);
+				}
 			} else if (DoesTrackValueExist(pGameFlow->nLevelId, "ForceOneLapOnly")) {
 				if (bPBTimeDisplayEnabled) {
 					DrawTimeText(data, "Best Time: ", StandingLapPB.nPBTime, StandingLapPB.fTextHighlightTime > 0);
