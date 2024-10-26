@@ -371,7 +371,7 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, int opponentTyp
 			WriteLog("Mismatched ghost for " + fileName);
 			return;
 		}
-		if (tmpupgrade != nUpgradeLevel || tmphandling != nHandlingMode || tmpfouc != bTimeTrialIsFOUC) {
+		if (tmpupgrade != nUpgradeLevel || (!bIsCareerMode && tmphandling != nHandlingMode) || tmpfouc != bTimeTrialIsFOUC) {
 			WriteLog("Mismatched ghost for " + fileName);
 			return;
 		}
@@ -787,7 +787,7 @@ void HookLoop() {
 #ifdef FLATOUT_UC
 			if (bIsCareerMode) {
 				data.y += 0.25;
-				if (OpponentsCareer[4].IsValid()) DrawTimeText(data, std::format("{}: ", GetStringNarrow(OpponentsCareer[4].sPlayerName)), OpponentsCareer[4].nPBTime, false);
+				if (bDisplaySuperAuthorTime && OpponentsCareer[4].IsValid()) DrawTimeText(data, std::format("{}: ", GetStringNarrow(OpponentsCareer[4].sPlayerName)), OpponentsCareer[4].nPBTime, false);
 				//if (OpponentsCareer[3].IsValid()) DrawTimeText(data, "Author: ", OpponentsCareer[3].nPBTime, false);
 				//DrawTimeText(data, "Gold: ", OpponentsCareer[0].nPBTime, false);
 				//DrawTimeText(data, "Silver: ", OpponentsCareer[1].nPBTime, false);
