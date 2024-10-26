@@ -29,6 +29,7 @@ bool b3LapMode = false;
 bool bIsCareerMode = false;
 bool bDisplayGhostsInCareer = false;
 bool bDisplayAuthorInCareer = false;
+bool bDisplaySuperAuthorTime = false;
 
 #ifdef FLATOUT_UC
 bool bTimeTrialIsFOUC = true;
@@ -98,7 +99,7 @@ struct tCarState {
 #ifndef FLATOUT_UC
 		car->mGearbox.nGear = gear;
 #endif
-		if (bIsCareerMode && !bDisplayGhostsInCareer) {
+		if (bIsCareerMode && !bDisplayGhostsInCareer && !bViewReplayMode) {
 			car->GetMatrix()->p.y -= 50;
 		}
 	}
@@ -449,13 +450,16 @@ void RunGhost(Player* pPlayer) {
 	pPlayer->TriggerEvent(eventProperties);
 #endif
 
+	int targetPlayer = bViewReplayMode ? 0 : 1;
+
 	int playerId = pPlayer->nPlayerId-1;
-	if (playerId == 1) fGhostTime += 0.01;
+	if (playerId == targetPlayer) fGhostTime += 0.01;
 
 	auto ply = GetPlayerScore<PlayerScoreRace>(1);
 	tGhostSetup* ghost = nullptr;
 	if (bIsCareerMode) {
-		ghost = &OpponentsCareer[playerId-1];
+		if (playerId <= 0) ghost = &StandingLapPB;
+		else ghost = &OpponentsCareer[playerId-1];
 	}
 	else {
 		bool isOpponent = playerId > 1;
@@ -568,7 +572,7 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 		if (!bGhostLoaded) ResetAndLoadPBGhost();
 
 		if (bViewReplayMode) {
-			if (playerId == 0) RunGhost(pPlayer);
+			if (bIsCareerMode || playerId == 0) RunGhost(pPlayer);
 			else {
 				pPlayer->pCar->GetMatrix()->p = {500,-25,500};
 				*pPlayer->pCar->GetVelocity() = {0,0,0};
@@ -607,6 +611,7 @@ void __fastcall OnFinishLap(uint32_t lapTime) {
 
 	auto ghost = isFirstLap ? &StandingLapPB : &RollingLapPB;
 	if (b3LapMode) ghost = &ThreeLapPB;
+	if (bIsCareerMode) ghost = &StandingLapPB;
 
 	if (!bViewReplayMode) {
 		if (replayTime < ghost->nPBTime) {
@@ -720,20 +725,28 @@ void DisplayInputs(tInputState* inputs) {
 #endif
 }
 
+std::string GetTimeText(uint32_t time, bool type) {
+	if (time == UINT_MAX) {
+		return "N/A";
+	}
+
+	std::string str = GetTimeFromMilliseconds(time, type);
+	str.pop_back(); // remove trailing 0, the game has a tickrate of 100fps
+	return str;
+}
+
 void DrawTimeText(tNyaStringData& data, const std::string& name, uint32_t pbTime, bool isTextHighlighted) {
 	std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-	std::string bestTimeString = name;
-	if (pbTime == UINT_MAX) {
-		bestTimeString += "N/A";
-	}
-	else {
-		bestTimeString += GetTimeFromMilliseconds(pbTime);
-		bestTimeString.pop_back(); // remove trailing 0, the game has a tickrate of 100fps
-	}
+	std::string bestTimeString = name + GetTimeText(pbTime, false);
 	if (isTextHighlighted) data.SetColor(0, 255, 0, 255);
 	else data.SetColor(255, 255, 255, 255);
 	DrawStringFO2(data, converter.from_bytes(bestTimeString).c_str(), "FontLarge");
 	data.y += 0.04;
+}
+
+auto GetStringNarrow(const std::wstring& string) {
+	std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+	return converter.to_bytes(string);
 }
 
 void HookLoop() {
@@ -773,17 +786,18 @@ void HookLoop() {
 			data.XRightAlign = true;
 #ifdef FLATOUT_UC
 			if (bIsCareerMode) {
-				if (OpponentsCareer[4].IsValid()) DrawTimeText(data, "Super Author: ", OpponentsCareer[4].nPBTime, false);
-				if (OpponentsCareer[3].IsValid()) DrawTimeText(data, "Author: ", OpponentsCareer[3].nPBTime, false);
-				DrawTimeText(data, "Gold: ", OpponentsCareer[0].nPBTime, false);
-				DrawTimeText(data, "Silver: ", OpponentsCareer[1].nPBTime, false);
-				DrawTimeText(data, "Bronze: ", OpponentsCareer[2].nPBTime, false);
-				if (bPBTimeDisplayEnabled && StandingLapPB.IsValid()) {
-					DrawTimeText(data, "Best Time: ", StandingLapPB.nPBTime, StandingLapPB.fTextHighlightTime > 0);
-				}
-				if (bCurrentSessionPBTimeDisplayEnabled && StandingLapPB.IsSessionValid()) {
-					DrawTimeText(data, "Best Time (Session): ", StandingLapPB.nCurrentSessionPBTime, StandingLapPB.fCurrentSessionTextHighlightTime > 0);
-				}
+				data.y += 0.25;
+				if (OpponentsCareer[4].IsValid()) DrawTimeText(data, std::format("{}: ", GetStringNarrow(OpponentsCareer[4].sPlayerName)), OpponentsCareer[4].nPBTime, false);
+				//if (OpponentsCareer[3].IsValid()) DrawTimeText(data, "Author: ", OpponentsCareer[3].nPBTime, false);
+				//DrawTimeText(data, "Gold: ", OpponentsCareer[0].nPBTime, false);
+				//DrawTimeText(data, "Silver: ", OpponentsCareer[1].nPBTime, false);
+				//DrawTimeText(data, "Bronze: ", OpponentsCareer[2].nPBTime, false);
+				//if (bPBTimeDisplayEnabled && StandingLapPB.IsValid()) {
+				//	DrawTimeText(data, "Best Time: ", StandingLapPB.nPBTime, StandingLapPB.fTextHighlightTime > 0);
+				//}
+				//if (bCurrentSessionPBTimeDisplayEnabled && StandingLapPB.IsSessionValid()) {
+				//	DrawTimeText(data, "Best Time (Session): ", StandingLapPB.nCurrentSessionPBTime, StandingLapPB.fCurrentSessionTextHighlightTime > 0);
+				//}
 			} else if (DoesTrackValueExist(pGameFlow->nLevelId, "ForceOneLapOnly")) {
 				if (bPBTimeDisplayEnabled) {
 					DrawTimeText(data, "Best Time: ", StandingLapPB.nPBTime, StandingLapPB.fTextHighlightTime > 0);
