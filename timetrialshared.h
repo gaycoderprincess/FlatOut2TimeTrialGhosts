@@ -30,6 +30,7 @@ bool bIsCareerMode = false;
 bool bDisplayGhostsInCareer = false;
 bool bDisplayAuthorInCareer = false;
 bool bDisplaySuperAuthorTime = false;
+uint32_t nCareerLastRacePBTime = 0;
 
 #ifdef FLATOUT_UC
 bool bTimeTrialIsFOUC = true;
@@ -120,6 +121,7 @@ struct tGhostSetup {
 	std::vector<tInputState> aPBInputs;
 	uint32_t nPBTime = UINT_MAX;
 	uint32_t nCurrentSessionPBTime = UINT_MAX;
+	uint32_t nLastRacePBTime = UINT_MAX; // for post-race menus
 	float fTextHighlightTime = 0;
 	float fCurrentSessionTextHighlightTime = 0;
 	uint8_t nCarSkinId = 0;
@@ -379,6 +381,7 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, int opponentTyp
 	ghost->nCarSkinId = tmpcarskin;
 	ghost->sPlayerName = tmpplayername;
 	ghost->nPBTime = tmptime;
+	ghost->nLastRacePBTime = tmptime;
 	int count = 0;
 	inFile.read((char*)&count, sizeof(count));
 	ghost->aPBGhost.reserve(count);
@@ -400,8 +403,10 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, int opponentTyp
 void ResetAndLoadPBGhost() {
 	if (bIsCareerMode) {
 		for (int i = 0; i < 5; i++) {
+			OpponentsCareer[i].nLastRacePBTime = UINT_MAX;
 			LoadPB(&OpponentsCareer[i], GetPlayer(0)->nCarId, pGameFlow->nLevelId, LAPTYPE_STANDING, i+1);
 		}
+		StandingLapPB.nLastRacePBTime = UINT_MAX;
 		LoadPB(&StandingLapPB, GetPlayer(0)->nCarId, pGameFlow->nLevelId, LAPTYPE_STANDING, false);
 	}
 	else if (b3LapMode) {
@@ -614,6 +619,7 @@ void __fastcall OnFinishLap(uint32_t lapTime) {
 	if (bIsCareerMode) ghost = &StandingLapPB;
 
 	if (!bViewReplayMode) {
+		nCareerLastRacePBTime = replayTime;
 		if (replayTime < ghost->nPBTime) {
 			WriteLog("Saving new lap PB of " + std::to_string(replayTime) + "ms");
 			ghost->aPBGhost = aRecordingGhost;
