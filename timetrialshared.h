@@ -219,8 +219,9 @@ std::string GetGhostFilename(int car, int track, int lapType, int opponentType, 
 	if (nHandlingMode) {
 		path += (useLegacyNaming ? "_handling" : "_hnd") + std::to_string(nHandlingMode);
 	}
-	if (bIsCareerMode && opponentType) {
-		path += "_" + std::to_string(opponentType);
+	if (bIsCareerMode) {
+		if (opponentType) path += "_" + std::to_string(opponentType);
+		else path += "_pb";
 	}
 #ifdef FLATOUT_UC
 	path += ".fouc";
