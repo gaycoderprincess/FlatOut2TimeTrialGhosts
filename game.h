@@ -328,13 +328,33 @@ auto lua_tolstring = (const char*(*)(void*, int, void*))0x5B4400;
 auto lua_getfield = (void(*)(void*, int, const char*))0x5B4AD0;
 auto lua_settop = (void(*)(void*, int))0x5B3C90;
 auto lua_gettable = (void(*)(void*, int))0x5B4A90;
+auto lua_type = (int(*)(void*, int))0x5B4070;
 
 const char* GetCarName(int id) {
 	auto table = GetLiteDB()->GetTable(std::format("FlatOut2.Cars.Car[{}]", id).c_str());
 	return (const char*)table->GetPropertyPointer("Name");
 }
 
-const char* GetTrackName(int id) {
+bool DoesTrackExist(int id) {
+	auto lua = pScriptHost->pLUAStruct->pLUAContext;
+	auto oldtop = lua_gettop(lua);
+
+	lua_getfield(lua, -10002, "Levels");
+	lua_rawgeti(lua, lua_gettop(lua), id);
+	auto value = lua_type(lua, lua_gettop(lua));
+	lua_settop(lua, oldtop);
+	return value;
+}
+
+int GetNumTracks() {
+	int i = 0;
+	while (DoesTrackExist(i+1)) {
+		i++;
+	}
+	return i;
+}
+
+bool DoesTrackValueExist(int id, const char* name) {
 	auto lua = pScriptHost->pLUAStruct->pLUAContext;
 	auto oldtop = lua_gettop(lua);
 
@@ -342,11 +362,51 @@ const char* GetTrackName(int id) {
 	lua_rawgeti(lua, lua_gettop(lua), id);
 
 	auto oldtop2 = lua_gettop(lua);
-	lua_setglobal(lua, "Name");
+	lua_setglobal(lua, name);
 	lua_gettable(lua, oldtop2);
-	auto name = (const char*)lua_tolstring(lua, lua_gettop(lua), 0);
+	auto value = lua_type(lua, lua_gettop(lua));
+	lua_settop(lua, oldtop);
+	return value;
+}
+
+float GetTrackValueNumber(int id, const char* name) {
+	if (!DoesTrackValueExist(id, name)) return 0;
+
+	auto lua = pScriptHost->pLUAStruct->pLUAContext;
+	auto oldtop = lua_gettop(lua);
+
+	lua_getfield(lua, -10002, "Levels");
+	lua_rawgeti(lua, lua_gettop(lua), id);
+
+	auto oldtop2 = lua_gettop(lua);
+	lua_setglobal(lua, name);
+	lua_gettable(lua, oldtop2);
+	auto f = luaL_checknumber(lua, lua_gettop(lua));
 
 	lua_settop(lua, oldtop);
 
-	return name;
+	return f;
+}
+
+const char* GetTrackValueString(int id, const char* name) {
+	if (!DoesTrackValueExist(id, name)) return nullptr;
+
+	auto lua = pScriptHost->pLUAStruct->pLUAContext;
+	auto oldtop = lua_gettop(lua);
+
+	lua_getfield(lua, -10002, "Levels");
+	lua_rawgeti(lua, lua_gettop(lua), id);
+
+	auto oldtop2 = lua_gettop(lua);
+	lua_setglobal(lua, name);
+	lua_gettable(lua, oldtop2);
+	auto str = (const char*)lua_tolstring(lua, lua_gettop(lua), 0);
+
+	lua_settop(lua, oldtop);
+
+	return str;
+}
+
+const char* GetTrackName(int id) {
+	return GetTrackValueString(id, "Name");
 }

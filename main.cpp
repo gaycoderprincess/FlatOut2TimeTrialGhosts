@@ -8,6 +8,8 @@
 
 #include "game.h"
 
+#include "../nya-common-fouc/fo2versioncheck.h"
+
 uintptr_t pControllerVTable = 0x67B920;
 void SetPlayerControl(bool on) {
 	NyaHookLib::Patch<uint32_t>(0x46F510, on ? 0x066C818B : 0xCC0004C2);
@@ -176,11 +178,7 @@ void D3DResetHook() {
 BOOL WINAPI DllMain(HINSTANCE, DWORD fdwReason, LPVOID) {
 	switch( fdwReason ) {
 		case DLL_PROCESS_ATTACH: {
-			if (NyaHookLib::GetEntryPoint() != 0x202638) {
-				MessageBoxA(nullptr, aFOUCVersionFail, "nya?!~", MB_ICONERROR);
-				exit(0);
-				return TRUE;
-			}
+			DoFlatOutVersionCheck(FO2Version::FO2_1_2);
 
 			InitAndReadConfigFile();
 
