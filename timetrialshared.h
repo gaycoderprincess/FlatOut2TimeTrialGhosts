@@ -184,8 +184,12 @@ std::string RemoveSpacesFromString(const std::string& str) {
 
 std::string GetGhostFilename(int car, int track, int lapType, int opponentType, bool useLegacyNaming) {
 	std::string path = "Ghosts/";
-	if (bIsCareerMode) {
+	if (bIsCareerMode && opponentType) {
 		path += "Career/";
+	}
+	else if (bIsCareerMode) {
+		std::filesystem::create_directory("Ghosts/CareerPB");
+		path += "CareerPB/";
 	}
 	else if (opponentType) path += "Opponents/";
 
