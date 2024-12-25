@@ -744,7 +744,7 @@ std::string GetTimeText(uint32_t time, bool type) {
 
 void DrawTimeText(tNyaStringData& data, const std::string& name, uint32_t pbTime, bool isTextHighlighted) {
 	std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-	std::string bestTimeString = name + GetTimeText(pbTime, false);
+	std::string bestTimeString = name + GetTimeText(pbTime, true);
 	if (isTextHighlighted) data.SetColor(0, 255, 0, 255);
 	else data.SetColor(255, 255, 255, 255);
 	DrawStringFO2(data, converter.from_bytes(bestTimeString).c_str(), "FontLarge");
