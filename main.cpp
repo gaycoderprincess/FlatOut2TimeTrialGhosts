@@ -6,8 +6,7 @@
 #include "nya_commonmath.h"
 #include "nya_commonhooklib.h"
 
-#include "game.h"
-
+#include "fo2.h"
 #include "../nya-common-fouc/fo2versioncheck.h"
 
 uintptr_t pControllerVTable = 0x67B920;
@@ -139,10 +138,10 @@ void __attribute__((naked)) GetAINameASM() {
 }
 
 void UpdateD3DProperties() {
-	g_pd3dDevice = *(IDirect3DDevice9**)0x8DA788;
-	ghWnd = *(HWND*)0x8DA79C;
-	nResX = *(int*)0x6D68E8;
-	nResY = *(int*)0x6D68EC;
+	g_pd3dDevice = DeviceD3d::pD3DDevice;
+	ghWnd = DeviceD3d::hWnd;
+	nResX = nGameResolutionX;
+	nResY = nGameResolutionY;
 }
 
 bool bDeviceJustReset = false;
@@ -159,20 +158,12 @@ void D3DHookMain() {
 	HookBaseLoop();
 }
 
-auto EndSceneOrig = (HRESULT(__thiscall*)(void*))nullptr;
-HRESULT __fastcall EndSceneHook(void* a1) {
-	D3DHookMain();
-	return EndSceneOrig(a1);
-}
-
-auto D3DResetOrig = (void(*)())nullptr;
-void D3DResetHook() {
+void OnD3DReset() {
 	if (g_pd3dDevice) {
 		UpdateD3DProperties();
 		ImGui_ImplDX9_InvalidateDeviceObjects();
 		bDeviceJustReset = true;
 	}
-	return D3DResetOrig();
 }
 
 BOOL WINAPI DllMain(HINSTANCE, DWORD fdwReason, LPVOID) {
@@ -209,9 +200,9 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD fdwReason, LPVOID) {
 			}
 
 			if (bShowInputsWhileDriving || bViewReplayMode || bPBTimeDisplayEnabled || bCurrentSessionPBTimeDisplayEnabled) {
-				EndSceneOrig = (HRESULT(__thiscall*)(void*))(*(uintptr_t*)0x67D5A4);
-				NyaHookLib::Patch(0x67D5A4, &EndSceneHook);
-				D3DResetOrig = (void(*)())NyaHookLib::PatchRelative(NyaHookLib::CALL, 0x5A621D, &D3DResetHook);
+				NyaFO2Hooks::PlaceD3DHooks();
+				NyaFO2Hooks::aEndSceneFuncs.push_back(D3DHookMain);
+				NyaFO2Hooks::aD3DResetFuncs.push_back(OnD3DReset);
 			}
 		} break;
 		default:
