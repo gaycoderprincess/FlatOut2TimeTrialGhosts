@@ -451,14 +451,9 @@ int GetCurrentPlaybackTick(tGhostSetup* ghost) {
 void RunGhost(Player* pPlayer) {
 	if (!pPlayer) return;
 
-#ifdef FLATOUT_UC
 	auto eventData = tEventData(EVENT_PLAYER_RESPAWN_GHOST);
 	eventData.data[3] = 1000;
 	pPlayer->TriggerEvent(&eventData);
-#else
-	int eventProperties[] = {PLAYEREVENT_RESPAWN_GHOST, 0, 0, 0, 1000};
-	pPlayer->TriggerEvent(eventProperties);
-#endif
 
 	int targetPlayer = bViewReplayMode ? 0 : 1;
 
