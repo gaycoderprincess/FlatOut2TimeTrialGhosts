@@ -916,3 +916,85 @@ void InitAndReadConfigFile() {
 	fInputBaseXPosition = config["input_display"]["pos_x"].value_or(0.2);
 	fInputBaseYPosition = config["input_display"]["pos_y"].value_or(0.85);
 }
+
+void TimeTrialMenu() {
+	ChloeMenuLib::BeginMenu();
+
+	if (DrawMenuOption(std::format("PB Display - {}", bPBTimeDisplayEnabled), "", false, false)) {
+		bPBTimeDisplayEnabled = !bPBTimeDisplayEnabled;
+	}
+
+	if (DrawMenuOption(std::format("Session PB Display - {}", bCurrentSessionPBTimeDisplayEnabled), "", false, false)) {
+		bCurrentSessionPBTimeDisplayEnabled = !bCurrentSessionPBTimeDisplayEnabled;
+	}
+
+	if (DrawMenuOption(std::format("Load Mismatched Replays - {}", bReplayIgnoreMismatches), "", false, false)) {
+		bReplayIgnoreMismatches = !bReplayIgnoreMismatches;
+	}
+
+	const char* aGhostVisualNames[] = {
+			"Off",
+			"On",
+			"Proximity"
+	};
+	if (DrawMenuOption(std::format("Ghost Visuals < {} >", aGhostVisualNames[nGhostVisuals]), "", false, false, true)) {
+		if (auto lr = ChloeMenuLib::GetMoveLR()) {
+			nGhostVisuals += lr;
+			if (nGhostVisuals < 0) nGhostVisuals = 2;
+			if (nGhostVisuals > 2) nGhostVisuals = 0;
+			if (pGameFlow->nGameState == GAME_STATE_RACE && bTimeTrialsEnabled) {
+				SetGhostVisuals(nGhostVisuals);
+			}
+		}
+	}
+
+	if (DrawMenuOption(std::format("Show Inputs While Driving - {}", bShowInputsWhileDriving), "", false, false)) {
+		bShowInputsWhileDriving = !bShowInputsWhileDriving;
+	}
+
+	if (bChloeCollectionIntegration) {
+		if (DrawMenuOption(std::format("Show Career Ghosts - {}", bDisplayGhostsInCareer), "", false, false)) {
+			bDisplayGhostsInCareer = !bDisplayGhostsInCareer;
+		}
+		//if (DrawMenuOption(std::format("Show Career Author Ghost - {}", bDisplayAuthorInCareer), "", false, false)) {
+		//	bDisplayAuthorInCareer = !bDisplayAuthorInCareer;
+		//}
+	}
+
+	if (pGameFlow->nGameState != GAME_STATE_RACE) {
+		if (DrawMenuOption(std::format("Replay Viewer - {}", bViewReplayMode), "", false, false)) {
+			bViewReplayMode = !bViewReplayMode;
+		}
+
+		if (!bChloeCollectionIntegration) {
+			const char* aNitroNames[] = {
+					"0x",
+					"1x",
+					"2x",
+					"Infinite"
+			};
+			if (DrawMenuOption(std::format("Nitro < {} >", aNitroNames[nNitroType]), "", false, false, true)) {
+				if (auto lr = ChloeMenuLib::GetMoveLR()) {
+					nNitroType += lr;
+					if (nNitroType < 0) nNitroType = NITRO_INFINITE;
+					if (nNitroType > NITRO_INFINITE) nNitroType = 0;
+				}
+			}
+
+			if (DrawMenuOption(std::format("No Props - {}", bNoProps), "", false, false)) {
+				if (bNoProps = !bNoProps) {
+					DisableProps();
+				}
+				else {
+					EnableProps();
+				}
+			}
+
+			if (DrawMenuOption(std::format("Three Lap Mode - {}", b3LapMode), "", false, false)) {
+				b3LapMode = !b3LapMode;
+			}
+		}
+	}
+
+	ChloeMenuLib::EndMenu();
+}

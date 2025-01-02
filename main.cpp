@@ -8,6 +8,7 @@
 
 #include "fo2.h"
 #include "../nya-common-fouc/fo2versioncheck.h"
+#include "chloemenulib.h"
 
 uintptr_t pControllerVTable = 0x67B920;
 void SetPlayerControl(bool on) {
@@ -28,6 +29,16 @@ float __attribute__((naked)) __fastcall GetAnalogInput(Controller* pController, 
 			:
 			:  "m" (GetAnalogInput_call)
 	);
+}
+
+void DisableProps() {
+	NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x59438C, 0x594421);
+	NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x593BD0, 0x593C6F);
+}
+
+void EnableProps() {
+	NyaHookLib::Patch<uint64_t>(0x59438C, 0x4D8B0000008F840F);
+	NyaHookLib::Patch<uint64_t>(0x593BD0, 0x558B00000099840F);
 }
 
 #include "timetrialshared.h"
@@ -173,6 +184,8 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD fdwReason, LPVOID) {
 
 			InitAndReadConfigFile();
 
+			ChloeMenuLib::RegisterMenu("Time Trial Ghosts - gaycoderprincess", &TimeTrialMenu);
+
 			if (bTimeTrialsEnabled) {
 				ProcessGhostCarsASM_call = NyaHookLib::PatchRelative(NyaHookLib::CALL, 0x409440, &ProcessGhostCarsASM);
 				ProcessPlayerCarsASM_call = NyaHookLib::PatchRelative(NyaHookLib::CALL, 0x46D5E9, &ProcessPlayerCarsASM);
@@ -189,8 +202,7 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD fdwReason, LPVOID) {
 				NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x409520, 0x40995E); // disable ai control
 				if (nGhostVisuals == 0) SetGhostVisuals(false);
 				if (bNoProps) {
-					NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x59438C, 0x594421);
-					NyaHookLib::PatchRelative(NyaHookLib::JMP, 0x593BD0, 0x593C6F);
+					DisableProps();
 				}
 			}
 			else {
