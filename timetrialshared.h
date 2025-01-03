@@ -1,4 +1,5 @@
 const int nLocalReplayVersion = 5;
+const int nNumCareerRallyOpponents = 12;
 
 enum eLapType {
 	LAPTYPE_ROLLING,
@@ -27,6 +28,9 @@ bool bLastRaceWasTimeTrial = false;
 bool bReplayIgnoreMismatches = false;
 bool b3LapMode = false;
 bool bIsCareerMode = false;
+bool bIsCareerRallyMode = false;
+int nCareerRallyClass = 0;
+int nCareerRallyDifficulty = 0;
 bool bDisplayGhostsInCareer = false;
 bool bDisplayAuthorInCareer = false;
 bool bDisplaySuperAuthorTime = false;
@@ -100,7 +104,7 @@ struct tCarState {
 #ifndef FLATOUT_UC
 		car->mGearbox.nGear = gear;
 #endif
-		if (bIsCareerMode && !bDisplayGhostsInCareer && !bViewReplayMode) {
+		if ((bIsCareerMode || bIsCareerRallyMode) && !bDisplayGhostsInCareer && !bViewReplayMode) {
 			car->GetMatrix()->p.y -= 50;
 		}
 	}
@@ -125,6 +129,8 @@ struct tGhostSetup {
 	float fTextHighlightTime = 0;
 	float fCurrentSessionTextHighlightTime = 0;
 	uint8_t nCarSkinId = 0;
+	float fTimescale[4] = {1,1,1,1};
+	double fPlaybackTimer = 0;
 	std::wstring sPlayerName;
 
 	tGhostSetup(bool addtoList = true) {
@@ -152,9 +158,9 @@ tGhostSetup OpponentStandingLapPB;
 tGhostSetup OpponentThreeLapPB;
 
 tGhostSetup OpponentsCareer[5];
+tGhostSetup OpponentsCareerRally[nNumCareerRallyOpponents];
 
 bool bGhostLoaded = false;
-double fGhostTime = 0;
 double fGhostRecordTotalTime = 0;
 
 bool IsPlayerStaging(Player* pPlayer) {
@@ -184,22 +190,32 @@ std::string RemoveSpacesFromString(const std::string& str) {
 
 std::string GetGhostFilename(int car, int track, int lapType, int opponentType, bool useLegacyNaming) {
 	std::string path = "Ghosts/";
-	if (bIsCareerMode && opponentType) {
+	if (bIsCareerRallyMode && opponentType) {
+		path += "Rally/";
+	}
+	else if (bIsCareerMode && opponentType) {
 		path += "Career/";
 	}
 	else if (bIsCareerMode) {
 		std::filesystem::create_directory("Ghosts/CareerPB");
 		path += "CareerPB/";
 	}
+	else if (bIsCareerRallyMode) {
+		std::filesystem::create_directory("Ghosts/RallyPB");
+		path += "RallyPB/";
+	}
 	else if (opponentType) path += "Opponents/";
 
-	if (useLegacyNaming) {
+	if (bIsCareerRallyMode) {
+		path += RemoveSpacesFromString(GetTrackName(track)) + "_Class" + std::to_string(nCareerRallyClass);
+	}
+	else if (useLegacyNaming) {
 		path += "Track" + std::to_string(track) + "_Car" + std::to_string(car + 1);
 	}
 	else {
 		path += RemoveSpacesFromString(GetTrackName(track)) + (std::string)"_" + RemoveSpacesFromString(GetCarName(car));
 	}
-	if (!bIsCareerMode) {
+	if (!bIsCareerMode && !bIsCareerRallyMode) {
 		if (bNoProps) path += "_noprops";
 		if (lapType == LAPTYPE_STANDING) path += "_lap1";
 		if (lapType == LAPTYPE_THREELAP) path += "_3lap";
@@ -220,12 +236,16 @@ std::string GetGhostFilename(int car, int track, int lapType, int opponentType, 
 			path += (useLegacyNaming ? "_upgrade" : "_up") + std::to_string(nUpgradeLevel);
 		}
 	}
-	if (nHandlingMode) {
+	if (!bIsCareerRallyMode && nHandlingMode) {
 		path += (useLegacyNaming ? "_handling" : "_hnd") + std::to_string(nHandlingMode);
 	}
 	if (bIsCareerMode) {
 		if (opponentType) path += "_" + std::to_string(opponentType);
 		else path += "_pb";
+	}
+	// all opponents load one ghost in career
+	if (bIsCareerRallyMode) {
+		if (!opponentType) path += "_pb";
 	}
 #ifdef FLATOUT_UC
 	path += ".fouc";
@@ -378,7 +398,7 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, int opponentTyp
 			WriteLog("Mismatched ghost for " + fileName);
 			return;
 		}
-		if (tmpupgrade != nUpgradeLevel || (!bIsCareerMode && tmphandling != nHandlingMode) || tmpfouc != bTimeTrialIsFOUC) {
+		if (tmpupgrade != nUpgradeLevel || (!bIsCareerMode && !bIsCareerRallyMode && tmphandling != nHandlingMode) || tmpfouc != bTimeTrialIsFOUC) {
 			WriteLog("Mismatched ghost for " + fileName);
 			return;
 		}
@@ -405,8 +425,74 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, int opponentTyp
 	}
 }
 
+struct tSpeedCap {
+	float minSpeed;
+	float maxSpeed;
+};
+tSpeedCap fRallyOpponentSpeeds[] = {
+	{0.97, 1.03}, // "JACK BENTON"
+	{0.7, 1.015}, // "KATIE JACKSON"
+	{0.9, 1.03}, // "SOFIA MARTINEZ"
+	{0.7, 1.015}, // "SALLY TAYLOR"
+	{0.6, 1.0}, // "JASON WALKER"
+	{0.5, 1.03}, // "RAY CARTER"
+	{0.4, 1.0}, // "FRANK MALCOV"
+	{0.7, 1.0}, // "CURTIS WOLFE"
+	{0.4, 0.9}, // "LEWIS DURAN"
+	{0.8, 1.03}, // "LEI BING"
+	{0.8, 1.02}, // "JILL RICHARDS"
+	{0.6, 0.9}, // "NEVILLE"
+};
+
+void LoadRallyTimescaleConfig() {
+	auto config = toml::parse_file("Config/RallyDifficulty.toml");
+	const char* diff;
+	switch (nCareerRallyDifficulty) {
+		case 0:
+		default:
+			diff = "normal";
+		case 1:
+			diff = "competitive";
+		case 2:
+			diff = "sadistic";
+			break;
+	}
+	for (int i = 0; i < nNumCareerRallyOpponents; i++) {
+		fRallyOpponentSpeeds[i].minSpeed = config[diff][std::format("AI{}MinSpeed",i+1)].value_or(1.0);
+		fRallyOpponentSpeeds[i].maxSpeed = config[diff][std::format("AI{}MaxSpeed",i+1)].value_or(1.0);
+	}
+}
+
+void RerollRallyTimescales() {
+	LoadRallyTimescaleConfig();
+	for (int i = 0; i < nNumCareerRallyOpponents; i++) {
+		auto min = fRallyOpponentSpeeds[i].minSpeed;
+		auto max = fRallyOpponentSpeeds[i].maxSpeed;
+		if (min == max) {
+			OpponentsCareerRally[i].fTimescale[0] = max;
+			OpponentsCareerRally[i].fTimescale[1] = max;
+			OpponentsCareerRally[i].fTimescale[2] = max;
+			OpponentsCareerRally[i].fTimescale[3] = max;
+		}
+		else {
+			OpponentsCareerRally[i].fTimescale[0] = min + ((float)rand() / (RAND_MAX / (max - min)));
+			OpponentsCareerRally[i].fTimescale[1] = min + ((float)rand() / (RAND_MAX / (max - min)));
+			OpponentsCareerRally[i].fTimescale[2] = min + ((float)rand() / (RAND_MAX / (max - min)));
+			OpponentsCareerRally[i].fTimescale[3] = min + ((float)rand() / (RAND_MAX / (max - min)));
+		}
+	}
+}
+
 void ResetAndLoadPBGhost() {
-	if (bIsCareerMode) {
+	if (bIsCareerRallyMode) {
+		for (int i = 0; i < nNumCareerRallyOpponents; i++) {
+			OpponentsCareerRally[i].nLastRacePBTime = UINT_MAX;
+			LoadPB(&OpponentsCareerRally[i], GetPlayer(0)->nCarId, pGameFlow->PreRace.nLevel, LAPTYPE_STANDING, i+1);
+		}
+		StandingLapPB.nLastRacePBTime = UINT_MAX;
+		LoadPB(&StandingLapPB, GetPlayer(0)->nCarId, pGameFlow->PreRace.nLevel, LAPTYPE_STANDING, false);
+	}
+	else if (bIsCareerMode) {
 		for (int i = 0; i < 5; i++) {
 			OpponentsCareer[i].nLastRacePBTime = UINT_MAX;
 			LoadPB(&OpponentsCareer[i], GetPlayer(0)->nCarId, pGameFlow->PreRace.nLevel, LAPTYPE_STANDING, i+1);
@@ -429,9 +515,9 @@ void ResetAndLoadPBGhost() {
 
 void InvalidateGhost() {
 	bGhostLoaded = false;
-	fGhostTime = 0;
 	fGhostRecordTotalTime = 0;
 	for (auto ghost : aGhosts) {
+		ghost->fPlaybackTimer = 0;
 		ghost->nPBTime = UINT_MAX;
 		ghost->fTextHighlightTime = 0;
 		ghost->aPBGhost.clear();
@@ -442,7 +528,7 @@ void InvalidateGhost() {
 }
 
 int GetCurrentPlaybackTick(tGhostSetup* ghost) {
-	double currTime = fGhostTime;
+	double currTime = ghost->fPlaybackTimer;
 	int tick = std::floor(100 * currTime);
 	if (tick > ghost->aPBGhost.size() - 1) tick = ghost->aPBGhost.size() - 1;
 	return tick;
@@ -458,11 +544,23 @@ void RunGhost(Player* pPlayer) {
 	int targetPlayer = bViewReplayMode ? 0 : 1;
 
 	int playerId = pPlayer->nPlayerId-1;
-	if (playerId == targetPlayer) fGhostTime += 0.01;
+	if (playerId == targetPlayer) {
+		for (auto& ghost : aGhosts) {
+			float timescale = ghost->fTimescale[0];
+			if (ghost->fPlaybackTimer > ghost->nPBTime * 25) timescale = ghost->fTimescale[1];
+			if (ghost->fPlaybackTimer > ghost->nPBTime * 50) timescale = ghost->fTimescale[2];
+			if (ghost->fPlaybackTimer > ghost->nPBTime * 75) timescale = ghost->fTimescale[3];
+			ghost->fPlaybackTimer += 0.01 * timescale;
+		}
+	}
 
 	auto ply = GetPlayerScore<PlayerScoreRace>(1);
 	tGhostSetup* ghost = nullptr;
-	if (bIsCareerMode) {
+	if (bIsCareerRallyMode) {
+		if (playerId <= 0) ghost = &StandingLapPB;
+		else ghost = &OpponentsCareerRally[playerId-1];
+	}
+	else if (bIsCareerMode) {
 		if (playerId <= 0) ghost = &StandingLapPB;
 		else ghost = &OpponentsCareer[playerId-1];
 	}
@@ -547,7 +645,10 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 	auto opponentGhostPlayer = GetPlayer(2);
 	if (!localPlayer || !ghostPlayer || !opponentGhostPlayer) return;
 
-	if (bIsCareerMode) {
+	if (bIsCareerRallyMode) {
+		pGameFlow->PreRace.fNitroMultiplier = 0.0;
+	}
+	else if (bIsCareerMode) {
 		pGameFlow->PreRace.fNitroMultiplier = DoesTrackValueExist(pGameFlow->PreRace.nLevel, "ForceOneLapOnly") ? 0.0 : 1.0;
 	}
 	else {
@@ -593,7 +694,7 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 		if (!bGhostLoaded) ResetAndLoadPBGhost();
 
 		if (bViewReplayMode) {
-			if (bIsCareerMode || playerId == 0) RunGhost(pPlayer);
+			if (bIsCareerMode || bIsCareerRallyMode || playerId == 0) RunGhost(pPlayer);
 			else {
 				pPlayer->pCar->GetMatrix()->p = {500,-25,500};
 				*pPlayer->pCar->GetVelocity() = {0,0,0};
@@ -632,7 +733,7 @@ void __fastcall OnFinishLap(uint32_t lapTime) {
 
 	auto ghost = isFirstLap ? &StandingLapPB : &RollingLapPB;
 	if (b3LapMode) ghost = &ThreeLapPB;
-	if (bIsCareerMode) ghost = &StandingLapPB;
+	if (bIsCareerMode || bIsCareerRallyMode) ghost = &StandingLapPB;
 
 	if (!bViewReplayMode) {
 		nCareerLastRacePBTime = replayTime;
@@ -643,7 +744,7 @@ void __fastcall OnFinishLap(uint32_t lapTime) {
 			ghost->nPBTime = replayTime;
 			ghost->fTextHighlightTime = 5;
 			auto lapType = b3LapMode ? LAPTYPE_THREELAP : isFirstLap;
-			if (bIsCareerMode) lapType = LAPTYPE_STANDING;
+			if (bIsCareerMode || bIsCareerRallyMode) lapType = LAPTYPE_STANDING;
 			SavePB(ghost, GetPlayer(0)->nCarId, pGameFlow->PreRace.nLevel, lapType);
 		}
 		if (replayTime < ghost->nCurrentSessionPBTime) {
@@ -654,8 +755,10 @@ void __fastcall OnFinishLap(uint32_t lapTime) {
 	isFirstLap = false;
 	aRecordingGhost.clear();
 	aRecordingInputs.clear();
-	fGhostTime = 0;
 	fGhostRecordTotalTime = 0;
+	for (auto& ghost : aGhosts) {
+		ghost->fPlaybackTimer = 0;
+	}
 }
 
 tGhostSetup* LoadTemporaryGhostForSpawning(int carId) {
@@ -663,7 +766,8 @@ tGhostSetup* LoadTemporaryGhostForSpawning(int carId) {
 
 	static tGhostSetup tmp(false);
 	tmp = tGhostSetup(false);
-	if (bIsCareerMode) {
+	if (bIsCareerRallyMode) return &tmp;
+	else if (bIsCareerMode) {
 		LoadPB(&tmp, carId, pGameFlow->PreRace.nLevel, LAPTYPE_STANDING, 5);
 	}
 	else if (b3LapMode) {
@@ -790,7 +894,7 @@ void HookLoop() {
 			DisplayInputs(&inputs);
 		}
 
-		if (bTimeTrialsEnabled && (bPBTimeDisplayEnabled || bCurrentSessionPBTimeDisplayEnabled) && !IsPlayerStaging(player)) {
+		if (bTimeTrialsEnabled && (bPBTimeDisplayEnabled || bCurrentSessionPBTimeDisplayEnabled) && !IsPlayerStaging(player) && !bIsCareerRallyMode) {
 			tNyaStringData data;
 			//data.x = 0.5;
 			//data.y = 0.21;
@@ -917,6 +1021,22 @@ void InitAndReadConfigFile() {
 	fInputBaseYPosition = config["input_display"]["pos_y"].value_or(0.85);
 }
 
+void ValueEditorMenu(float& value) {
+	ChloeMenuLib::BeginMenu();
+
+	static char inputString[1024] = {};
+	ChloeMenuLib::AddTextInputToString(inputString, 1024, true);
+	ChloeMenuLib::SetEnterHint("Apply");
+
+	if (DrawMenuOption(inputString + (std::string)"...", "", false, false) && inputString[0]) {
+		value = std::stof(inputString);
+		memset(inputString,0,sizeof(inputString));
+		ChloeMenuLib::BackOut();
+	}
+
+	ChloeMenuLib::EndMenu();
+}
+
 void TimeTrialMenu() {
 	ChloeMenuLib::BeginMenu();
 
@@ -959,6 +1079,45 @@ void TimeTrialMenu() {
 		//if (DrawMenuOption(std::format("Show Career Author Ghost - {}", bDisplayAuthorInCareer), "", false, false)) {
 		//	bDisplayAuthorInCareer = !bDisplayAuthorInCareer;
 		//}
+	}
+
+	if (bChloeCollectionIntegration) {
+		if (DrawMenuOption("Timescales")) {
+			ChloeMenuLib::BeginMenu();
+			const char* aiNames[] = {
+				"JACK BENTON",
+				"KATIE JACKSON",
+				"SOFIA MARTINEZ",
+				"SALLY TAYLOR",
+				"JASON WALKER",
+				"RAY CARTER",
+				"FRANK MALCOV",
+				"CURTIS WOLFE",
+				"LEWIS DURAN",
+				"LEI BING",
+				"JILL RICHARDS",
+				"NEVILLE",
+			};
+			for (int i = 0; i < nNumCareerRallyOpponents; i++) {
+				if (DrawMenuOption(std::format("{} - {:.2f} {:.2f} {:.2f} {:.2f}", aiNames[i], OpponentsCareerRally[i].fTimescale[0], OpponentsCareerRally[i].fTimescale[1], OpponentsCareerRally[i].fTimescale[2], OpponentsCareerRally[i].fTimescale[3]))) {
+					ChloeMenuLib::BeginMenu();
+					if (DrawMenuOption(std::format("Speed 1/4 - {}", OpponentsCareerRally[i].fTimescale[0]), "", false, false)) {
+						ValueEditorMenu(OpponentsCareerRally[i].fTimescale[0]);
+					}
+					if (DrawMenuOption(std::format("Speed 2/4 - {}", OpponentsCareerRally[i].fTimescale[1]), "", false, false)) {
+						ValueEditorMenu(OpponentsCareerRally[i].fTimescale[1]);
+					}
+					if (DrawMenuOption(std::format("Speed 3/4 - {}", OpponentsCareerRally[i].fTimescale[2]), "", false, false)) {
+						ValueEditorMenu(OpponentsCareerRally[i].fTimescale[2]);
+					}
+					if (DrawMenuOption(std::format("Speed 4/4 - {}", OpponentsCareerRally[i].fTimescale[3]), "", false, false)) {
+						ValueEditorMenu(OpponentsCareerRally[i].fTimescale[3]);
+					}
+					ChloeMenuLib::EndMenu();
+				}
+			}
+			ChloeMenuLib::EndMenu();
+		}
 	}
 
 	if (pGameFlow->nGameState != GAME_STATE_RACE) {
