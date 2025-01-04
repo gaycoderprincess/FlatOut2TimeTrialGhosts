@@ -129,12 +129,25 @@ struct tGhostSetup {
 	float fTextHighlightTime = 0;
 	float fCurrentSessionTextHighlightTime = 0;
 	uint8_t nCarSkinId = 0;
-	float fTimescale[4] = {1,1,1,1};
+	float fTimescale[32];
+	float fMaxRubberbandTimescale = 1.0;
+	float fConstantTimescale = 0;
+	float fLastUsedTimescale = 0;
+	float fLastUsedRubberband = 0;
 	double fPlaybackTimer = 0;
 	std::wstring sPlayerName;
 
 	tGhostSetup(bool addtoList = true) {
 		if (addtoList) aGhosts.push_back(this);
+		for (int i = 0; i < 32; i++) {
+			fTimescale[i] = 1.0;
+		}
+	}
+
+	float GetTimescale(int split) {
+		if (fConstantTimescale) return fConstantTimescale;
+		if (split < 0 || split >= 32) split = 0;
+		return fTimescale[split];
 	}
 
 	bool IsValid() {
@@ -428,6 +441,7 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, int opponentTyp
 struct tSpeedCap {
 	float minSpeed;
 	float maxSpeed;
+	float rubberbandSpeed = 1.0;
 };
 tSpeedCap fRallyOpponentSpeeds[] = {
 	{0.97, 1.03}, // "JACK BENTON"
@@ -446,20 +460,30 @@ tSpeedCap fRallyOpponentSpeeds[] = {
 
 void LoadRallyTimescaleConfig() {
 	auto config = toml::parse_file("Config/RallyDifficulty.toml");
-	const char* diff;
+	const char* diff = nullptr;
 	switch (nCareerRallyDifficulty) {
 		case 0:
 		default:
 			diff = "normal";
+			break;
 		case 1:
 			diff = "competitive";
+			break;
 		case 2:
 			diff = "sadistic";
 			break;
 	}
+	WriteLog(std::format("Loading timescale configs for {} (difficulty {})", diff, nCareerRallyDifficulty));
+	auto classMultiplier = config[diff][std::format("Class{}Speed",nCareerRallyClass)].value_or(1.0);
+	auto classMultiplierRubberband = config[diff][std::format("Class{}RubberbandSpeed",nCareerRallyClass)].value_or(1.0);
 	for (int i = 0; i < nNumCareerRallyOpponents; i++) {
-		fRallyOpponentSpeeds[i].minSpeed = config[diff][std::format("AI{}MinSpeed",i+1)].value_or(1.0);
-		fRallyOpponentSpeeds[i].maxSpeed = config[diff][std::format("AI{}MaxSpeed",i+1)].value_or(1.0);
+		fRallyOpponentSpeeds[i].minSpeed = config["AI"][std::format("AI{}Min",i+1)].value_or(1.0)*classMultiplier;
+		fRallyOpponentSpeeds[i].maxSpeed = config["AI"][std::format("AI{}Max",i+1)].value_or(1.0)*classMultiplier;
+
+		fRallyOpponentSpeeds[i].rubberbandSpeed = config["AI"][std::format("AI{}Rubberband",i+1)].value_or(1.0);
+		fRallyOpponentSpeeds[i].rubberbandSpeed -= 1.0;
+		fRallyOpponentSpeeds[i].rubberbandSpeed *= classMultiplierRubberband;
+		fRallyOpponentSpeeds[i].rubberbandSpeed += 1.0;
 	}
 }
 
@@ -468,17 +492,14 @@ void RerollRallyTimescales() {
 	for (int i = 0; i < nNumCareerRallyOpponents; i++) {
 		auto min = fRallyOpponentSpeeds[i].minSpeed;
 		auto max = fRallyOpponentSpeeds[i].maxSpeed;
-		if (min == max) {
-			OpponentsCareerRally[i].fTimescale[0] = max;
-			OpponentsCareerRally[i].fTimescale[1] = max;
-			OpponentsCareerRally[i].fTimescale[2] = max;
-			OpponentsCareerRally[i].fTimescale[3] = max;
-		}
-		else {
-			OpponentsCareerRally[i].fTimescale[0] = min + ((float)rand() / (RAND_MAX / (max - min)));
-			OpponentsCareerRally[i].fTimescale[1] = min + ((float)rand() / (RAND_MAX / (max - min)));
-			OpponentsCareerRally[i].fTimescale[2] = min + ((float)rand() / (RAND_MAX / (max - min)));
-			OpponentsCareerRally[i].fTimescale[3] = min + ((float)rand() / (RAND_MAX / (max - min)));
+		OpponentsCareerRally[i].fMaxRubberbandTimescale = fRallyOpponentSpeeds[i].rubberbandSpeed;
+		for (int j = 0; j < 32; j++) {
+			if (min == max) {
+				OpponentsCareerRally[i].fTimescale[j] = max;
+			}
+			else {
+				OpponentsCareerRally[i].fTimescale[j] = min + ((float)rand() / (RAND_MAX / (max - min)));
+			}
 		}
 	}
 }
@@ -534,6 +555,30 @@ int GetCurrentPlaybackTick(tGhostSetup* ghost) {
 	return tick;
 }
 
+int GetPlayerRelativeSplit(Player* pPlayer) {
+	int split = pPlayer->nCurrentSplit;
+	if (!b3LapMode) split -= pPlayer->nCurrentLap * pTrackAI->pTrack->nNumSplitpoints;
+	if (split < 0) split = 0;
+	if (split > 31) split = 31;
+	return split;
+}
+
+bool ShouldGhostRubberband(tGhostSetup* ghost, Player* pGhostPlayer) {
+	int split = GetPlayerRelativeSplit(pGhostPlayer);
+	int localSplit = GetPlayerRelativeSplit(GetPlayer(0));
+	// if 2 splits behind, activate rubberband
+	if (split <= localSplit - 2) {
+		return true;
+	}
+	// if 1 split behind, activate if far behind
+	if (split <= localSplit - 1) {
+		auto v1 = pGhostPlayer->pCar->GetMatrix()->p;
+		auto v2 = GetPlayer(0)->pCar->GetMatrix()->p;
+		return (v1 - v2).length() > 150;
+	}
+	return false;
+}
+
 void RunGhost(Player* pPlayer) {
 	if (!pPlayer) return;
 
@@ -544,16 +589,6 @@ void RunGhost(Player* pPlayer) {
 	int targetPlayer = bViewReplayMode ? 0 : 1;
 
 	int playerId = pPlayer->nPlayerId-1;
-	if (playerId == targetPlayer) {
-		for (auto& ghost : aGhosts) {
-			float timescale = ghost->fTimescale[0];
-			if (ghost->fPlaybackTimer > ghost->nPBTime * 25) timescale = ghost->fTimescale[1];
-			if (ghost->fPlaybackTimer > ghost->nPBTime * 50) timescale = ghost->fTimescale[2];
-			if (ghost->fPlaybackTimer > ghost->nPBTime * 75) timescale = ghost->fTimescale[3];
-			ghost->fPlaybackTimer += 0.01 * timescale;
-		}
-	}
-
 	auto ply = GetPlayerScore<PlayerScoreRace>(1);
 	tGhostSetup* ghost = nullptr;
 	if (bIsCareerRallyMode) {
@@ -573,6 +608,17 @@ void RunGhost(Player* pPlayer) {
 		}
 		if (b3LapMode) ghost = isOpponent ? &OpponentThreeLapPB : &ThreeLapPB;
 	}
+
+	// split for timescale
+	int split = GetPlayerRelativeSplit(pPlayer);
+	float timescale = ghost->GetTimescale(split);
+	ghost->fLastUsedRubberband = 1;
+	if (ShouldGhostRubberband(ghost, pPlayer)) {
+		timescale *= ghost->fMaxRubberbandTimescale;
+		ghost->fLastUsedRubberband = ghost->fMaxRubberbandTimescale;
+	}
+	ghost->fLastUsedTimescale = timescale;
+	ghost->fPlaybackTimer += 0.01 * timescale;
 
 	if (ghost->aPBGhost.empty()) {
 		if (!bViewReplayMode) pPlayer->pCar->GetMatrix()->p = {500,-25,500};
@@ -1037,6 +1083,22 @@ void ValueEditorMenu(float& value) {
 	ChloeMenuLib::EndMenu();
 }
 
+void ValueEditorMenu(int& value) {
+	ChloeMenuLib::BeginMenu();
+
+	static char inputString[1024] = {};
+	ChloeMenuLib::AddTextInputToString(inputString, 1024, true);
+	ChloeMenuLib::SetEnterHint("Apply");
+
+	if (DrawMenuOption(inputString + (std::string)"...", "", false, false) && inputString[0]) {
+		value = std::stoi(inputString);
+		memset(inputString,0,sizeof(inputString));
+		ChloeMenuLib::BackOut();
+	}
+
+	ChloeMenuLib::EndMenu();
+}
+
 void TimeTrialMenu() {
 	ChloeMenuLib::BeginMenu();
 
@@ -1084,6 +1146,11 @@ void TimeTrialMenu() {
 	if (bChloeCollectionIntegration) {
 		if (DrawMenuOption("Timescales")) {
 			ChloeMenuLib::BeginMenu();
+
+			if (DrawMenuOption(std::format("Difficulty - {}", nCareerRallyDifficulty))) {
+				ValueEditorMenu(nCareerRallyDifficulty);
+			}
+
 			const char* aiNames[] = {
 				"JACK BENTON",
 				"KATIE JACKSON",
@@ -1099,21 +1166,9 @@ void TimeTrialMenu() {
 				"NEVILLE",
 			};
 			for (int i = 0; i < nNumCareerRallyOpponents; i++) {
-				if (DrawMenuOption(std::format("{} - {:.2f} {:.2f} {:.2f} {:.2f}", aiNames[i], OpponentsCareerRally[i].fTimescale[0], OpponentsCareerRally[i].fTimescale[1], OpponentsCareerRally[i].fTimescale[2], OpponentsCareerRally[i].fTimescale[3]))) {
-					ChloeMenuLib::BeginMenu();
-					if (DrawMenuOption(std::format("Speed 1/4 - {}", OpponentsCareerRally[i].fTimescale[0]), "", false, false)) {
-						ValueEditorMenu(OpponentsCareerRally[i].fTimescale[0]);
-					}
-					if (DrawMenuOption(std::format("Speed 2/4 - {}", OpponentsCareerRally[i].fTimescale[1]), "", false, false)) {
-						ValueEditorMenu(OpponentsCareerRally[i].fTimescale[1]);
-					}
-					if (DrawMenuOption(std::format("Speed 3/4 - {}", OpponentsCareerRally[i].fTimescale[2]), "", false, false)) {
-						ValueEditorMenu(OpponentsCareerRally[i].fTimescale[2]);
-					}
-					if (DrawMenuOption(std::format("Speed 4/4 - {}", OpponentsCareerRally[i].fTimescale[3]), "", false, false)) {
-						ValueEditorMenu(OpponentsCareerRally[i].fTimescale[3]);
-					}
-					ChloeMenuLib::EndMenu();
+				auto ghost = &OpponentsCareerRally[i];
+				if (DrawMenuOption(std::format("{} - {:.2f} (catchup {:.2f})", aiNames[i], ghost->fLastUsedTimescale, ghost->fLastUsedRubberband))) {
+					ValueEditorMenu(OpponentsCareerRally[i].fConstantTimescale);
 				}
 			}
 			ChloeMenuLib::EndMenu();
