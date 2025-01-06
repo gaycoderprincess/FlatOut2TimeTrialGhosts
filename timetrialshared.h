@@ -626,15 +626,14 @@ void RunGhost(Player* pPlayer) {
 		timescale *= ghost->fMaxRubberbandTimescale;
 		ghost->fLastUsedRubberband = ghost->fMaxRubberbandTimescale;
 	}
-	if (split > 0 && ghost->bFailOnSplit[split] && pPlayer->nCurrentLap < pScoreManager->nNumLaps) {
+	if (split > 1 && ghost->bFailOnSplit[split] && pPlayer->nCurrentLap < pScoreManager->nNumLaps) {
 		timescale = 0.0;
 		if (!pPlayer->nIsWrecked) {
 			auto eventData = tEventData(EVENT_PLAYER_WRECKED, pPlayer->nPlayerId);
 			pEventManager->PostEvent(&eventData);
 			pPlayer->nIsWrecked = true;
 		}
-		//auto ply = GetPlayerScore<PlayerScoreRace>(pPlayer->nPlayerId);
-		//ply->bIsDNF = true;
+		GetPlayerScore<PlayerScoreRace>(pPlayer->nPlayerId)->bIsDNF = true;
 	}
 	ghost->fLastUsedTimescale = timescale;
 	ghost->fPlaybackTimer += 0.01 * timescale;
