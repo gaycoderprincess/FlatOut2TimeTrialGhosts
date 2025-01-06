@@ -132,6 +132,7 @@ struct tGhostSetup {
 	float fTimescale[32];
 	float fMaxRubberbandTimescale = 1.0;
 	float fConstantTimescale = 0;
+	bool bFailOnSplit[32];
 	float fLastUsedTimescale = 0;
 	float fLastUsedRubberband = 0;
 	double fPlaybackTimer = 0;
@@ -141,6 +142,7 @@ struct tGhostSetup {
 		if (addtoList) aGhosts.push_back(this);
 		for (int i = 0; i < 32; i++) {
 			fTimescale[i] = 1.0;
+			bFailOnSplit[i] = false;
 		}
 	}
 
@@ -177,6 +179,9 @@ bool bGhostLoaded = false;
 double fGhostRecordTotalTime = 0;
 
 bool IsPlayerStaging(Player* pPlayer) {
+	if (bIsCareerMode || bIsCareerRallyMode) {
+		return pGameFlow->nRaceState != RACE_STATE_RACING && pGameFlow->nRaceState != RACE_STATE_FINISHED;
+	}
 	return (pPlayer->nSomeFlags & 2) != 0;
 }
 
@@ -442,6 +447,7 @@ struct tSpeedCap {
 	float minSpeed;
 	float maxSpeed;
 	float rubberbandSpeed = 1.0;
+	float failChance = 0.0;
 };
 tSpeedCap fRallyOpponentSpeeds[] = {
 	{0.97, 1.03}, // "JACK BENTON"
@@ -479,6 +485,7 @@ void LoadRallyTimescaleConfig() {
 	for (int i = 0; i < nNumCareerRallyOpponents; i++) {
 		fRallyOpponentSpeeds[i].minSpeed = config["AI"][std::format("AI{}Min",i+1)].value_or(1.0)*classMultiplier;
 		fRallyOpponentSpeeds[i].maxSpeed = config["AI"][std::format("AI{}Max",i+1)].value_or(1.0)*classMultiplier;
+		fRallyOpponentSpeeds[i].failChance = config["AI"][std::format("AI{}FailChance",i+1)].value_or(0.0);
 
 		fRallyOpponentSpeeds[i].rubberbandSpeed = config["AI"][std::format("AI{}Rubberband",i+1)].value_or(1.0);
 		fRallyOpponentSpeeds[i].rubberbandSpeed -= 1.0;
@@ -493,6 +500,7 @@ void RerollRallyTimescales() {
 		auto min = fRallyOpponentSpeeds[i].minSpeed;
 		auto max = fRallyOpponentSpeeds[i].maxSpeed;
 		OpponentsCareerRally[i].fMaxRubberbandTimescale = fRallyOpponentSpeeds[i].rubberbandSpeed;
+		auto failChance = fRallyOpponentSpeeds[i].failChance * 100;
 		for (int j = 0; j < 32; j++) {
 			if (min == max) {
 				OpponentsCareerRally[i].fTimescale[j] = max;
@@ -500,6 +508,7 @@ void RerollRallyTimescales() {
 			else {
 				OpponentsCareerRally[i].fTimescale[j] = min + ((float)rand() / (RAND_MAX / (max - min)));
 			}
+			OpponentsCareerRally[i].bFailOnSplit[j] = rand() % 10000 < failChance;
 		}
 	}
 }
@@ -557,7 +566,7 @@ int GetCurrentPlaybackTick(tGhostSetup* ghost) {
 
 int GetPlayerRelativeSplit(Player* pPlayer) {
 	int split = pPlayer->nCurrentSplit;
-	if (!b3LapMode) split -= pPlayer->nCurrentLap * pTrackAI->pTrack->nNumSplitpoints;
+	if (!b3LapMode && pScoreManager->nNumLaps > 1) split -= pPlayer->nCurrentLap * pTrackAI->pTrack->nNumSplitpoints;
 	if (split < 0) split = 0;
 	if (split > 31) split = 31;
 	return split;
@@ -616,6 +625,16 @@ void RunGhost(Player* pPlayer) {
 	if (ShouldGhostRubberband(ghost, pPlayer)) {
 		timescale *= ghost->fMaxRubberbandTimescale;
 		ghost->fLastUsedRubberband = ghost->fMaxRubberbandTimescale;
+	}
+	if (split > 0 && ghost->bFailOnSplit[split] && pPlayer->nCurrentLap < pScoreManager->nNumLaps) {
+		timescale = 0.0;
+		if (!pPlayer->nIsWrecked) {
+			auto eventData = tEventData(EVENT_PLAYER_WRECKED, pPlayer->nPlayerId);
+			pEventManager->PostEvent(&eventData);
+			pPlayer->nIsWrecked = true;
+		}
+		//auto ply = GetPlayerScore<PlayerScoreRace>(pPlayer->nPlayerId);
+		//ply->bIsDNF = true;
 	}
 	ghost->fLastUsedTimescale = timescale;
 	ghost->fPlaybackTimer += 0.01 * timescale;
@@ -682,6 +701,7 @@ void RecordGhost(Player* pPlayer) {
 void __fastcall ProcessGhostCar(Player* pPlayer) {
 	if (!bTimeTrialsEnabled) return;
 	if (!pPlayer) return;
+	if (pLoadingScreen) return;
 
 	if (bViewReplayMode) SetPlayerControl(true);
 
@@ -798,12 +818,13 @@ void __fastcall OnFinishLap(uint32_t lapTime) {
 			ghost->fCurrentSessionTextHighlightTime = 5;
 		}
 	}
-	isFirstLap = false;
 	aRecordingGhost.clear();
 	aRecordingInputs.clear();
 	fGhostRecordTotalTime = 0;
-	for (auto& ghost : aGhosts) {
-		ghost->fPlaybackTimer = 0;
+	if (!bIsCareerMode && !bIsCareerRallyMode) {
+		for (auto& ghost : aGhosts) {
+			ghost->fPlaybackTimer = 0;
+		}
 	}
 }
 
