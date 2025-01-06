@@ -945,7 +945,8 @@ void HookLoop() {
 		return;
 	}
 
-	if (auto player = GetPlayer(0)) {
+	auto player = GetPlayer(0);
+	if (player && !pGameFlow->nIsPauseMenuUp) {
 		auto ply = GetPlayerScore<PlayerScoreRace>(1);
 
 		if (bViewReplayMode) {
