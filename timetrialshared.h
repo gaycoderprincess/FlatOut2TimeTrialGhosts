@@ -83,9 +83,7 @@ struct tCarState {
 		brake = car->fBrakePedal;
 		nitroHeld = car->fNitroButton;
 		handbrake = car->fHandbrake;
-#ifndef FLATOUT_UC
 		gear = car->mGearbox.nGear;
-#endif
 	}
 
 	void Apply(Player* pPlayer) {
@@ -101,9 +99,7 @@ struct tCarState {
 		car->fBrakePedal = brake;
 		car->fNitroButton = nitroHeld;
 		car->fHandbrake = handbrake;
-#ifndef FLATOUT_UC
 		car->mGearbox.nGear = gear;
-#endif
 		if ((bIsCareerMode || bIsCareerRallyMode) && !bDisplayGhostsInCareer && !bViewReplayMode) {
 			car->GetMatrix()->p.y -= 50;
 		}
