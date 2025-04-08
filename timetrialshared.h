@@ -17,6 +17,9 @@ int nNitroType = NITRO_FULL;
 int nUpgradeLevel = 0;
 int nHandlingMode = 0;
 int nGhostVisuals = 2;
+#ifdef FLATOUT_UC
+bool bIsFO2Track = false;
+#endif
 bool bNoProps = false;
 bool bViewReplayMode = false;
 bool bShowInputsWhileDriving = false;
@@ -220,14 +223,18 @@ std::string GetGhostFilename(int car, int track, int lapType, int opponentType, 
 	}
 	else if (opponentType) path += "Opponents/";
 
+	auto trackName = (std::string)GetTrackName(track);
+#ifdef FLATOUT_UC
+	if (bIsFO2Track) trackName = "FO2 " + trackName;
+#endif
 	if (bIsCareerRallyMode) {
-		path += RemoveSpacesFromString(GetTrackName(track)) + "_Class" + std::to_string(nCareerRallyClass);
+		path += RemoveSpacesFromString(trackName) + "_Class" + std::to_string(nCareerRallyClass);
 	}
 	else if (useLegacyNaming) {
 		path += "Track" + std::to_string(track) + "_Car" + std::to_string(car + 1);
 	}
 	else {
-		path += RemoveSpacesFromString(GetTrackName(track)) + (std::string)"_" + RemoveSpacesFromString(GetCarName(car));
+		path += RemoveSpacesFromString(trackName) + (std::string)"_" + RemoveSpacesFromString(GetCarName(car));
 	}
 	if (!bIsCareerMode && !bIsCareerRallyMode) {
 		if (bNoProps) path += "_noprops";
