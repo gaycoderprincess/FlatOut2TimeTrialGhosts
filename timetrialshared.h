@@ -426,6 +426,9 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, int opponentTyp
 	}
 	ghost->nCarSkinId = tmpcarskin;
 	ghost->sPlayerName = tmpplayername;
+	if (bIsCareerMode && ghost->sPlayerName == L"Bul") {
+		ghost->sPlayerName = L"Bulko";
+	}
 	ghost->nPBTime = tmptime;
 	ghost->nLastRacePBTime = tmptime;
 	int count = 0;
