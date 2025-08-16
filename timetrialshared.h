@@ -192,6 +192,14 @@ struct tGhostSetup {
 		return nCurrentSessionPBTime != UINT_MAX;
 	}
 
+	uint32_t GetFinishTime() {
+#ifdef FLATOUT_1
+		return aPBGhost.size()*10;
+#else
+		return nPBTime;
+#endif
+	}
+
 	void UpdateTextHighlight() {
 		if (fTextHighlightTime > 0) fTextHighlightTime -= 0.01;
 		if (fCurrentSessionTextHighlightTime > 0) fCurrentSessionTextHighlightTime -= 0.01;
@@ -876,7 +884,7 @@ void __fastcall OnFinishLap(uint32_t lapTime) {
 
 	if (!bViewReplayMode) {
 		nCareerLastRacePBTime = replayTime;
-		if (replayTime < ghost->nPBTime) {
+		if (replayTime < ghost->GetFinishTime()) {
 			WriteLog("Saving new lap PB of " + std::to_string(replayTime) + "ms");
 			ghost->aPBGhost = aRecordingGhost;
 			ghost->aPBInputs = aRecordingInputs;
@@ -1072,13 +1080,13 @@ void HookLoop() {
 #ifdef FLATOUT_UC
 			if (bIsCareerMode) {
 				data.y += 0.25;
-				if (bDisplaySuperAuthorTime && OpponentsCareer[4].IsValid()) DrawTimeText(data, std::format("{}: ", GetStringNarrow(OpponentsCareer[4].sPlayerName)), OpponentsCareer[4].nPBTime, false);
-				//if (OpponentsCareer[3].IsValid()) DrawTimeText(data, "Author: ", OpponentsCareer[3].nPBTime, false);
-				//DrawTimeText(data, "Gold: ", OpponentsCareer[0].nPBTime, false);
-				//DrawTimeText(data, "Silver: ", OpponentsCareer[1].nPBTime, false);
-				//DrawTimeText(data, "Bronze: ", OpponentsCareer[2].nPBTime, false);
+				if (bDisplaySuperAuthorTime && OpponentsCareer[4].IsValid()) DrawTimeText(data, std::format("{}: ", GetStringNarrow(OpponentsCareer[4].sPlayerName)), OpponentsCareer[4].GetFinishTime(), false);
+				//if (OpponentsCareer[3].IsValid()) DrawTimeText(data, "Author: ", OpponentsCareer[3].GetFinishTime(), false);
+				//DrawTimeText(data, "Gold: ", OpponentsCareer[0].GetFinishTime(), false);
+				//DrawTimeText(data, "Silver: ", OpponentsCareer[1].GetFinishTime(), false);
+				//DrawTimeText(data, "Bronze: ", OpponentsCareer[2].GetFinishTime(), false);
 				//if (bPBTimeDisplayEnabled && StandingLapPB.IsValid()) {
-				//	DrawTimeText(data, "Best Time: ", StandingLapPB.nPBTime, StandingLapPB.fTextHighlightTime > 0);
+				//	DrawTimeText(data, "Best Time: ", StandingLapPB.GetFinishTime(), StandingLapPB.fTextHighlightTime > 0);
 				//}
 				//if (bCurrentSessionPBTimeDisplayEnabled && StandingLapPB.IsSessionValid()) {
 				//	DrawTimeText(data, "Best Time (Session): ", StandingLapPB.nCurrentSessionPBTime, StandingLapPB.fCurrentSessionTextHighlightTime > 0);
@@ -1092,7 +1100,7 @@ void HookLoop() {
 								 StandingLapPB.fCurrentSessionTextHighlightTime > 0);
 				}
 				if (bPBTimeDisplayEnabled && OpponentStandingLapPB.IsValid()) {
-					DrawTimeText(data, "Opponent's Best Time: ", OpponentStandingLapPB.nPBTime, OpponentStandingLapPB.fTextHighlightTime > 0);
+					DrawTimeText(data, "Opponent's Best Time: ", OpponentStandingLapPB.GetFinishTime(), OpponentStandingLapPB.fTextHighlightTime > 0);
 				}
 			}
 			else if (b3LapMode) {
@@ -1100,20 +1108,20 @@ void HookLoop() {
 			if (b3LapMode) {
 #endif
 				if (bPBTimeDisplayEnabled) {
-					DrawTimeText(data, "Best Time: ", ThreeLapPB.nPBTime, ThreeLapPB.fTextHighlightTime > 0);
+					DrawTimeText(data, "Best Time: ", ThreeLapPB.GetFinishTime(), ThreeLapPB.fTextHighlightTime > 0);
 				}
 				if (bCurrentSessionPBTimeDisplayEnabled) {
 					DrawTimeText(data, "Best Time (Session): ", ThreeLapPB.nCurrentSessionPBTime,
 								 ThreeLapPB.fCurrentSessionTextHighlightTime > 0);
 				}
 				if (bPBTimeDisplayEnabled && OpponentThreeLapPB.IsValid()) {
-					DrawTimeText(data, "Opponent's Best Time: ", OpponentThreeLapPB.nPBTime, OpponentThreeLapPB.fTextHighlightTime > 0);
+					DrawTimeText(data, "Opponent's Best Time: ", OpponentThreeLapPB.GetFinishTime(), OpponentThreeLapPB.fTextHighlightTime > 0);
 				}
 			}
 			else {
 				if (bPBTimeDisplayEnabled) {
-					DrawTimeText(data, "Rolling PB: ", RollingLapPB.nPBTime, RollingLapPB.fTextHighlightTime > 0);
-					DrawTimeText(data, "Standing PB: ", StandingLapPB.nPBTime, StandingLapPB.fTextHighlightTime > 0);
+					DrawTimeText(data, "Rolling PB: ", RollingLapPB.GetFinishTime(), RollingLapPB.fTextHighlightTime > 0);
+					DrawTimeText(data, "Standing PB: ", StandingLapPB.GetFinishTime(), StandingLapPB.fTextHighlightTime > 0);
 				}
 				if (bCurrentSessionPBTimeDisplayEnabled) {
 					DrawTimeText(data, "Rolling PB (Session): ", RollingLapPB.nCurrentSessionPBTime,
@@ -1123,10 +1131,10 @@ void HookLoop() {
 				}
 				if (bPBTimeDisplayEnabled) {
 					if (OpponentRollingLapPB.IsValid()) {
-						DrawTimeText(data, "Opponent Rolling PB: ", OpponentRollingLapPB.nPBTime, OpponentRollingLapPB.fTextHighlightTime > 0);
+						DrawTimeText(data, "Opponent Rolling PB: ", OpponentRollingLapPB.GetFinishTime(), OpponentRollingLapPB.fTextHighlightTime > 0);
 					}
 					if (OpponentStandingLapPB.IsValid()) {
-						DrawTimeText(data, "Opponent Standing PB: ", OpponentStandingLapPB.nPBTime, OpponentStandingLapPB.fTextHighlightTime > 0);
+						DrawTimeText(data, "Opponent Standing PB: ", OpponentStandingLapPB.GetFinishTime(), OpponentStandingLapPB.fTextHighlightTime > 0);
 					}
 				}
 			}
