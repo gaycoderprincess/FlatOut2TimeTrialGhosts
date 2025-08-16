@@ -1,6 +1,33 @@
 const int nLocalReplayVersion = 5;
 const int nNumCareerRallyOpponents = 12;
 
+int GetLevelID() {
+#ifdef FLATOUT_1
+	return pGameFlow->nLevel;
+#else
+	return pGameFlow->PreRace.nLevel;
+#endif
+}
+
+#ifndef FLATOUT_1
+int GetGameState() {
+	return pGameFlow->nGameState;
+}
+int GetScoreManager() {
+	return pScoreManager;
+}
+#endif
+
+enum eReplayInput {
+	REPLAYINPUT_NITRO,
+	REPLAYINPUT_HANDBRAKE,
+	REPLAYINPUT_RESET,
+	REPLAYINPUT_LEFT,
+	REPLAYINPUT_RIGHT,
+	REPLAYINPUT_GAS,
+	REPLAYINPUT_BRAKE,
+};
+
 enum eLapType {
 	LAPTYPE_ROLLING,
 	LAPTYPE_STANDING,
@@ -50,6 +77,8 @@ uint32_t n3LapTotalTime = 0;
 void WriteLog(const std::string& str) {
 #ifdef FLATOUT_UC
 	static auto file = std::ofstream("FlatOutUCTimeTrialGhosts_gcp.log");
+#elif FLATOUT_1
+	static auto file = std::ofstream("FlatOutTimeTrialGhosts_gcp.log");
 #else
 	static auto file = std::ofstream("FlatOut2TimeTrialGhosts_gcp.log");
 #endif
@@ -86,7 +115,9 @@ struct tCarState {
 		brake = car->fBrakePedal;
 		nitroHeld = car->fNitroButton;
 		handbrake = car->fHandbrake;
+#ifndef FLATOUT_1
 		gear = car->mGearbox.nGear;
+#endif
 	}
 
 	void Apply(Player* pPlayer) {
@@ -102,7 +133,9 @@ struct tCarState {
 		car->fBrakePedal = brake;
 		car->fNitroButton = nitroHeld;
 		car->fHandbrake = handbrake;
+#ifndef FLATOUT_1
 		car->mGearbox.nGear = gear;
+#endif
 		if ((bIsCareerMode || bIsCareerRallyMode) && !bDisplayGhostsInCareer && !bViewReplayMode) {
 			car->GetMatrix()->p.y -= 50;
 		}
@@ -178,10 +211,14 @@ bool bGhostLoaded = false;
 double fGhostRecordTotalTime = 0;
 
 bool IsPlayerStaging(Player* pPlayer) {
+#ifdef FLATOUT_1
+	return pPlayer->nInputFlags.bHoldBrake && pPlayer->nInputFlags.bIsStaging;
+#else
 	if (bIsCareerMode || bIsCareerRallyMode) {
 		return pGameFlow->nRaceState != RACE_STATE_RACING && pGameFlow->nRaceState != RACE_STATE_FINISHED;
 	}
 	return (pPlayer->nSomeFlags & 2) != 0;
+#endif
 }
 
 bool ShouldGhostRun() {
@@ -234,7 +271,11 @@ std::string GetGhostFilename(int car, int track, int lapType, int opponentType, 
 		path += "Track" + std::to_string(track) + "_Car" + std::to_string(car + 1);
 	}
 	else {
+#ifdef FLATOUT_1
+		path += RemoveSpacesFromString(trackName) + (std::string)"_Car" + std::to_string(car + 1);
+#else
 		path += RemoveSpacesFromString(trackName) + (std::string)"_" + RemoveSpacesFromString(GetCarName(car));
+#endif
 	}
 	if (!bIsCareerMode && !bIsCareerRallyMode) {
 		if (bNoProps) path += "_noprops";
@@ -523,28 +564,28 @@ void ResetAndLoadPBGhost() {
 	if (bIsCareerRallyMode) {
 		for (int i = 0; i < nNumCareerRallyOpponents; i++) {
 			OpponentsCareerRally[i].nLastRacePBTime = UINT_MAX;
-			LoadPB(&OpponentsCareerRally[i], GetPlayer(0)->nCarId, pGameFlow->PreRace.nLevel, LAPTYPE_STANDING, i+1);
+			LoadPB(&OpponentsCareerRally[i], GetPlayer(0)->nCarId, GetLevelID(), LAPTYPE_STANDING, i+1);
 		}
 		StandingLapPB.nLastRacePBTime = UINT_MAX;
-		LoadPB(&StandingLapPB, GetPlayer(0)->nCarId, pGameFlow->PreRace.nLevel, LAPTYPE_STANDING, false);
+		LoadPB(&StandingLapPB, GetPlayer(0)->nCarId, GetLevelID(), LAPTYPE_STANDING, false);
 	}
 	else if (bIsCareerMode) {
 		for (int i = 0; i < 5; i++) {
 			OpponentsCareer[i].nLastRacePBTime = UINT_MAX;
-			LoadPB(&OpponentsCareer[i], GetPlayer(0)->nCarId, pGameFlow->PreRace.nLevel, LAPTYPE_STANDING, i+1);
+			LoadPB(&OpponentsCareer[i], GetPlayer(0)->nCarId, GetLevelID(), LAPTYPE_STANDING, i+1);
 		}
 		StandingLapPB.nLastRacePBTime = UINT_MAX;
-		LoadPB(&StandingLapPB, GetPlayer(0)->nCarId, pGameFlow->PreRace.nLevel, LAPTYPE_STANDING, false);
+		LoadPB(&StandingLapPB, GetPlayer(0)->nCarId, GetLevelID(), LAPTYPE_STANDING, false);
 	}
 	else if (b3LapMode) {
-		LoadPB(&ThreeLapPB, GetPlayer(0)->nCarId, pGameFlow->PreRace.nLevel, LAPTYPE_THREELAP, false);
-		LoadPB(&OpponentThreeLapPB, GetPlayer(0)->nCarId, pGameFlow->PreRace.nLevel, LAPTYPE_THREELAP, true);
+		LoadPB(&ThreeLapPB, GetPlayer(0)->nCarId, GetLevelID(), LAPTYPE_THREELAP, false);
+		LoadPB(&OpponentThreeLapPB, GetPlayer(0)->nCarId, GetLevelID(), LAPTYPE_THREELAP, true);
 	}
 	else {
-		LoadPB(&StandingLapPB, GetPlayer(0)->nCarId, pGameFlow->PreRace.nLevel, LAPTYPE_STANDING, false);
-		LoadPB(&RollingLapPB, GetPlayer(0)->nCarId, pGameFlow->PreRace.nLevel, LAPTYPE_ROLLING, false);
-		LoadPB(&OpponentStandingLapPB, GetPlayer(0)->nCarId, pGameFlow->PreRace.nLevel, LAPTYPE_STANDING, true);
-		LoadPB(&OpponentRollingLapPB, GetPlayer(0)->nCarId, pGameFlow->PreRace.nLevel, LAPTYPE_ROLLING, true);
+		LoadPB(&StandingLapPB, GetPlayer(0)->nCarId, GetLevelID(), LAPTYPE_STANDING, false);
+		LoadPB(&RollingLapPB, GetPlayer(0)->nCarId, GetLevelID(), LAPTYPE_ROLLING, false);
+		LoadPB(&OpponentStandingLapPB, GetPlayer(0)->nCarId, GetLevelID(), LAPTYPE_STANDING, true);
+		LoadPB(&OpponentRollingLapPB, GetPlayer(0)->nCarId, GetLevelID(), LAPTYPE_ROLLING, true);
 	}
 	bGhostLoaded = true;
 }
@@ -572,7 +613,7 @@ int GetCurrentPlaybackTick(tGhostSetup* ghost) {
 
 int GetPlayerRelativeSplit(Player* pPlayer) {
 	int split = pPlayer->nCurrentSplit;
-	if (!b3LapMode && pScoreManager->nNumLaps > 1) split -= pPlayer->nCurrentLap * pTrackAI->pTrack->nNumSplitpoints;
+	if (!b3LapMode && GetScoreManager()->nNumLaps > 1) split -= pPlayer->nCurrentLap * pEnvironment->nNumSplitpoints;
 	if (split < 0) split = 0;
 	if (split > 31) split = 31;
 	return split;
@@ -597,9 +638,11 @@ bool ShouldGhostRubberband(tGhostSetup* ghost, Player* pGhostPlayer) {
 void RunGhost(Player* pPlayer) {
 	if (!pPlayer) return;
 
+#ifndef FLATOUT_1
 	auto eventData = tEventData(EVENT_PLAYER_RESPAWN_GHOST);
 	eventData.data[3] = 1000;
 	pPlayer->TriggerEvent(&eventData);
+#endif
 
 	int targetPlayer = bViewReplayMode ? 0 : 1;
 
@@ -632,7 +675,8 @@ void RunGhost(Player* pPlayer) {
 		timescale *= ghost->fMaxRubberbandTimescale;
 		ghost->fLastUsedRubberband = ghost->fMaxRubberbandTimescale;
 	}
-	if (split > 1 && ghost->bFailOnSplit[split] && pPlayer->nCurrentLap < pScoreManager->nNumLaps) {
+#ifndef FLATOUT_1
+	if (split > 1 && ghost->bFailOnSplit[split] && pPlayer->nCurrentLap < GetScoreManager()->nNumLaps) {
 		timescale = 0.0;
 		if (!pPlayer->nIsWrecked) {
 			auto eventData = tEventData(EVENT_PLAYER_WRECKED, pPlayer->nPlayerId);
@@ -641,6 +685,7 @@ void RunGhost(Player* pPlayer) {
 		}
 		GetPlayerScore<PlayerScoreRace>(pPlayer->nPlayerId)->bIsDNF = true;
 	}
+#endif
 	ghost->fLastUsedTimescale = timescale;
 	ghost->fPlaybackTimer += 0.01 * timescale;
 
@@ -656,7 +701,11 @@ void RunGhost(Player* pPlayer) {
 tInputState RecordInputs(Player* pPlayer) {
 	static tInputState inputState;
 	memset(&inputState, 0, sizeof(inputState));
-#ifdef FLATOUT_UC
+#ifdef FLATOUT_1
+	//inputState.keys[REPLAYINPUT_GAS] = pPlayer->fGasPedal;
+	//inputState.keys[REPLAYINPUT_BRAKE] = pPlayer->fBrakePedal;
+	//inputState.keys[REPLAYINPUT_LEFT] = pPlayer->fOutputSteerAngle;
+#elif FLATOUT_UC
 	for (int i = 0; i < 20; i++) {
 		inputState.keys[i] = pPlayer->pController->GetInputValue(i);
 	}
@@ -693,7 +742,9 @@ tInputState RecordInputs(Player* pPlayer) {
 
 void RecordGhost(Player* pPlayer) {
 	if (!pPlayer) return;
+#ifndef FLATOUT_1
 	if (!pPlayer->pController) return;
+#endif
 
 	fGhostRecordTotalTime += 0.01;
 
@@ -703,7 +754,11 @@ void RecordGhost(Player* pPlayer) {
 	aRecordingInputs.push_back(RecordInputs(pPlayer));
 }
 
+#ifdef FLATOUT_1
+void __fastcall ProcessGhostCar(Player* pPlayer, float time) {
+#else
 void __fastcall ProcessGhostCar(Player* pPlayer) {
+#endif
 	if (!bTimeTrialsEnabled) return;
 	if (!pPlayer) return;
 	if (pLoadingScreen) return;
@@ -716,11 +771,12 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 	auto opponentGhostPlayer = GetPlayer(2);
 	if (!localPlayer || !ghostPlayer || !opponentGhostPlayer) return;
 
+#ifndef FLATOUT_1
 	if (bIsCareerRallyMode) {
 		pGameFlow->PreRace.fNitroMultiplier = 0.0;
 	}
 	else if (bIsCareerMode) {
-		pGameFlow->PreRace.fNitroMultiplier = DoesTrackValueExist(pGameFlow->PreRace.nLevel, "ForceOneLapOnly") ? 0.0 : 1.0;
+		pGameFlow->PreRace.fNitroMultiplier = DoesTrackValueExist(GetLevelID(), "ForceOneLapOnly") ? 0.0 : 1.0;
 	}
 	else {
 		switch (nNitroType) {
@@ -740,6 +796,7 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 				break;
 		}
 	}
+#endif
 
 	if (playerId == 0) {
 		for (auto ghost : aGhosts) {
@@ -797,7 +854,7 @@ void __fastcall OnFinishLap(uint32_t lapTime) {
 		if (isFirstLap) n3LapTotalTime = lapTime;
 		else n3LapTotalTime += lapTime;
 
-		if (ply->nCurrentLap != 3) return;
+		if (ply->nCurrentLap != GetScoreManager()->nNumLaps) return;
 	}
 
 	uint32_t replayTime = b3LapMode ? n3LapTotalTime : lapTime;
@@ -816,7 +873,7 @@ void __fastcall OnFinishLap(uint32_t lapTime) {
 			ghost->fTextHighlightTime = 5;
 			auto lapType = b3LapMode ? LAPTYPE_THREELAP : isFirstLap;
 			if (bIsCareerMode || bIsCareerRallyMode) lapType = LAPTYPE_STANDING;
-			SavePB(ghost, GetPlayer(0)->nCarId, pGameFlow->PreRace.nLevel, lapType);
+			SavePB(ghost, GetPlayer(0)->nCarId, GetLevelID(), lapType);
 		}
 		if (replayTime < ghost->nCurrentSessionPBTime) {
 			ghost->nCurrentSessionPBTime = replayTime;
@@ -834,46 +891,61 @@ void __fastcall OnFinishLap(uint32_t lapTime) {
 }
 
 tGhostSetup* LoadTemporaryGhostForSpawning(int carId) {
-	WriteLog(std::format("Loading temporary ghost for {} {}", GetCarName(carId), GetTrackName(pGameFlow->PreRace.nLevel)));
+#ifdef FLATOUT_1
+	WriteLog(std::format("Loading temporary ghost for car{} {}", carId+1, GetTrackName(GetLevelID())));
+#else
+	WriteLog(std::format("Loading temporary ghost for {} {}", GetCarName(carId), GetTrackName(GetLevelID())));
+#endif
 
 	static tGhostSetup tmp(false);
 	tmp = tGhostSetup(false);
 	if (bIsCareerRallyMode) return &tmp;
 	else if (bIsCareerMode) {
-		LoadPB(&tmp, carId, pGameFlow->PreRace.nLevel, LAPTYPE_STANDING, 5);
+		LoadPB(&tmp, carId, GetLevelID(), LAPTYPE_STANDING, 5);
 	}
 	else if (b3LapMode) {
-		LoadPB(&tmp, carId, pGameFlow->PreRace.nLevel, LAPTYPE_THREELAP, true);
+		LoadPB(&tmp, carId, GetLevelID(), LAPTYPE_THREELAP, true);
 	} else {
 		// load rolling, fallback to standing
-		LoadPB(&tmp, carId, pGameFlow->PreRace.nLevel, LAPTYPE_STANDING, true);
+		LoadPB(&tmp, carId, GetLevelID(), LAPTYPE_STANDING, true);
 		tGhostSetup tmp2(false);
-		LoadPB(&tmp2, carId, pGameFlow->PreRace.nLevel, LAPTYPE_ROLLING, true);
+		LoadPB(&tmp2, carId, GetLevelID(), LAPTYPE_ROLLING, true);
 		if (tmp2.IsValid()) tmp = tmp2;
 	}
 	return &tmp;
 }
 
+const wchar_t* aAINames[] = {
+		L"PB GHOST",
+		L"OPPONENT GHOST",
+		L"NULL",
+		L"NULL",
+		L"NULL",
+		L"NULL",
+		L"NULL",
+		L"NULL",
+};
+const wchar_t* aAINamesCareer[] = {
+		L"GOLD",
+		L"SILVER",
+		L"BRONZE",
+		L"AUTHOR",
+		L"SUPER AUTHOR",
+		L"NULL",
+		L"NULL",
+		L"NULL",
+};
+
+#ifndef FLATOUT_1
 PlayerInfo* pOpponentPlayerInfo = nullptr;
 const wchar_t* __fastcall GetAIName(int id, PlayerInfo* playerInfo) {
-	const wchar_t* aAINames[] = {
-			L"PB GHOST",
-			L"OPPONENT GHOST",
-	};
-	const wchar_t* aAINamesCareer[] = {
-			L"GOLD",
-			L"SILVER",
-			L"BRONZE",
-			L"AUTHOR",
-			L"SUPER AUTHOR",
-	};
-
 	pOpponentPlayerInfo = nullptr;
 
 	if (id == 1 && !bIsCareerMode) pOpponentPlayerInfo = playerInfo;
 	if (id == 4 && bIsCareerMode) pOpponentPlayerInfo = playerInfo;
 	return bIsCareerMode ? aAINamesCareer[id] : aAINames[id];
 }
+#endif
 
 auto gInputRGBBackground = NyaDrawing::CNyaRGBA32(215,215,215,255);
 auto gInputRGBHighlight = NyaDrawing::CNyaRGBA32(0,255,0,255);
@@ -908,6 +980,7 @@ void DrawInputRectangle(float posX, float posY, float scaleX, float scaleY, floa
 }
 
 void DisplayInputs(tInputState* inputs) {
+#ifndef FLATOUT_1
 	DrawInputTriangle((fInputBaseXPosition - 0.005) * GetAspectRatioInv(), fInputBaseYPosition, 0.08 * GetAspectRatioInv(), 0.07, 1 - (inputs->keys[INPUT_STEER_LEFT] / 128.0), true);
 	DrawInputTriangle((fInputBaseXPosition + 0.08) * GetAspectRatioInv(), fInputBaseYPosition, -0.08 * GetAspectRatioInv(), 0.07, inputs->keys[INPUT_STEER_RIGHT] / 128.0, false);
 	DrawInputTriangleY((fInputBaseXPosition + 0.0375) * GetAspectRatioInv(), fInputBaseYPosition - 0.05, 0.035 * GetAspectRatioInv(), 0.045, 1 - (inputs->keys[INPUT_ACCELERATE] / 128.0), true);
@@ -919,6 +992,7 @@ void DisplayInputs(tInputState* inputs) {
 	DrawInputRectangle((fInputBaseXPosition + 0.325) * GetAspectRatioInv(), fInputBaseYPosition + 0.05, 0.03 * GetAspectRatioInv(), 0.03, inputs->keys[INPUT_NITRO] / 128.0);
 	DrawInputRectangle((fInputBaseXPosition + 0.425) * GetAspectRatioInv(), fInputBaseYPosition + 0.05, 0.03 * GetAspectRatioInv(), 0.03, inputs->keys[INPUT_HANDBRAKE] / 128.0);
 	DrawInputRectangle((fInputBaseXPosition + 0.525) * GetAspectRatioInv(), fInputBaseYPosition + 0.05, 0.03 * GetAspectRatioInv(), 0.03, inputs->keys[INPUT_RESET] / 128.0);
+#endif
 }
 
 std::string GetTimeText(uint32_t time, bool type) {
@@ -952,7 +1026,11 @@ void HookLoop() {
 	}
 
 	auto player = GetPlayer(0);
+#ifdef FLATOUT_1
+	if (player && !GetScoreManager()->nHideRaceHUD) {
+#else
 	if (player && !pGameFlow->nIsPauseMenuUp) {
+#endif
 		auto ply = GetPlayerScore<PlayerScoreRace>(1);
 
 		if (bViewReplayMode) {
@@ -967,6 +1045,7 @@ void HookLoop() {
 			DisplayInputs(&inputs);
 		}
 
+#ifndef FLATOUT_1
 		if (bTimeTrialsEnabled && (bPBTimeDisplayEnabled || bCurrentSessionPBTimeDisplayEnabled) && !IsPlayerStaging(player) && !bIsCareerRallyMode) {
 			tNyaStringData data;
 			//data.x = 0.5;
@@ -993,7 +1072,7 @@ void HookLoop() {
 				//if (bCurrentSessionPBTimeDisplayEnabled && StandingLapPB.IsSessionValid()) {
 				//	DrawTimeText(data, "Best Time (Session): ", StandingLapPB.nCurrentSessionPBTime, StandingLapPB.fCurrentSessionTextHighlightTime > 0);
 				//}
-			} else if (DoesTrackValueExist(pGameFlow->PreRace.nLevel, "ForceOneLapOnly")) {
+			} else if (DoesTrackValueExist(GetLevelID(), "ForceOneLapOnly")) {
 				if (bPBTimeDisplayEnabled) {
 					DrawTimeText(data, "Best Time: ", StandingLapPB.nPBTime, StandingLapPB.fTextHighlightTime > 0);
 				}
@@ -1041,19 +1120,24 @@ void HookLoop() {
 				}
 			}
 		}
+#endif
 	}
 
-#ifdef FLATOUT_UC
+#if defined(FLATOUT_UC) | defined(FLATOUT_1)
 	// uninit time trials once we're back in the menu
 	if (bChloeCollectionIntegration && pGameFlow) {
-		static auto nLastGameState = pGameFlow->nGameState;
-		auto currentGameState = pGameFlow->nGameState;
+		static auto nLastGameState = GetGameState();
+		auto currentGameState = GetGameState();
 		if (currentGameState != nLastGameState) {
 			if (currentGameState == GAME_STATE_MENU && bTimeTrialsEnabled) {
 				UninitTimeTrials();
 				bTimeTrialsEnabled = false;
 			}
+#ifdef FLATOUT_1
+			if ((currentGameState == GAME_STATE_RACE || currentGameState == GAME_STATE_REPLAY) && !bTimeTrialsEnabled) {
+#else
 			if (currentGameState == GAME_STATE_RACE && !bTimeTrialsEnabled) {
+#endif
 				bLastRaceWasTimeTrial = false;
 			}
 			nLastGameState = currentGameState;
@@ -1071,6 +1155,8 @@ void InitAndReadConfigFile() {
 
 #ifdef FLATOUT_UC
 	auto config = toml::parse_file("FlatOutUCTimeTrialGhosts_gcp.toml");
+#elif FLATOUT_1
+	auto config = toml::parse_file("FlatOutTimeTrialGhosts_gcp.toml");
 #else
 	auto config = toml::parse_file("FlatOut2TimeTrialGhosts_gcp.toml");
 #endif
@@ -1141,6 +1227,7 @@ void TimeTrialMenu() {
 		bReplayIgnoreMismatches = !bReplayIgnoreMismatches;
 	}
 
+#ifndef FLATOUT_1
 	const char* aGhostVisualNames[] = {
 			"Off",
 			"On",
@@ -1151,11 +1238,12 @@ void TimeTrialMenu() {
 			nGhostVisuals += lr;
 			if (nGhostVisuals < 0) nGhostVisuals = 2;
 			if (nGhostVisuals > 2) nGhostVisuals = 0;
-			if (pGameFlow->nGameState == GAME_STATE_RACE && bTimeTrialsEnabled) {
+			if (GetGameState() == GAME_STATE_RACE && bTimeTrialsEnabled) {
 				SetGhostVisuals(nGhostVisuals);
 			}
 		}
 	}
+#endif
 
 	if (DrawMenuOption(std::format("Show Inputs While Driving - {}", bShowInputsWhileDriving), "", false, false)) {
 		bShowInputsWhileDriving = !bShowInputsWhileDriving;
@@ -1202,7 +1290,11 @@ void TimeTrialMenu() {
 		}
 	}
 
-	if (pGameFlow->nGameState != GAME_STATE_RACE) {
+#ifdef FLATOUT_1
+	if (GetGameState() != GAME_STATE_RACE && GetGameState() != GAME_STATE_REPLAY) {
+#else
+	if (GetGameState() != GAME_STATE_RACE) {
+#endif
 		if (DrawMenuOption(std::format("Replay Viewer - {}", bViewReplayMode), "", false, false)) {
 			bViewReplayMode = !bViewReplayMode;
 		}
