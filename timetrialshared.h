@@ -311,6 +311,8 @@ std::string GetGhostFilename(int car, int track, int lapType, int opponentType, 
 	}
 #ifdef FLATOUT_UC
 	path += ".fouc";
+#elif FLATOUT_1
+	path += ".fo1";
 #else
 	path += ".fo2";
 #endif
@@ -762,6 +764,9 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 	if (!bTimeTrialsEnabled) return;
 	if (!pPlayer) return;
 	if (pLoadingScreen) return;
+#ifdef FLATOUT_1
+	if (pGameFlow->nIsInReplay) return;
+#endif
 
 	if (bViewReplayMode) SetPlayerControl(true);
 
@@ -847,8 +852,14 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 	}
 }
 
+#ifdef FLATOUT_1
+void __fastcall OnFinishLap() {
+	auto ply = GetPlayerScore<PlayerScoreRace>(1);
+	auto lapTime = ply->nLapTime;
+#else
 void __fastcall OnFinishLap(uint32_t lapTime) {
 	auto ply = GetPlayerScore<PlayerScoreRace>(1);
+#endif
 	bool isFirstLap = (ply->nCurrentLap - 1) == 0; // it's already increased by this point
 	if (b3LapMode) {
 		if (isFirstLap) n3LapTotalTime = lapTime;
