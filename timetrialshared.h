@@ -108,7 +108,11 @@ struct tCarState {
 		vel = *car->GetVelocity();
 		tvel = *car->GetAngVelocity();
 		memcpy(quat, car->qQuaternion, sizeof(quat));
+#ifdef FLATOUT_1
+		nitro = car->GetNitro();
+#else
 		nitro = car->fNitro;
+#endif
 		damage = car->fDamage;
 		steer = car->fSteerAngle;
 		gas = car->fGasPedal;
@@ -126,7 +130,11 @@ struct tCarState {
 		*car->GetVelocity() = vel;
 		*car->GetAngVelocity() = tvel;
 		memcpy(car->qQuaternion, quat, sizeof(quat));
+#ifdef FLATOUT_1
+		car->GetNitro() = nitro;
+#else
 		car->fNitro = nitro;
+#endif
 		car->fDamage = damage;
 		car->fSteerAngle = steer;
 		car->fGasPedal = gas;
@@ -194,6 +202,7 @@ struct tGhostSetup {
 
 	uint32_t GetFinishTime() {
 #ifdef FLATOUT_1
+		if (aPBGhost.empty()) return UINT_MAX;
 		return aPBGhost.size()*10;
 #else
 		return nPBTime;
@@ -815,8 +824,13 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 		for (auto ghost : aGhosts) {
 			ghost->UpdateTextHighlight();
 		}
+#ifdef FLATOUT_1
+		if (nNitroType == NITRO_NONE) pPlayer->pCar->GetNitro() = 0;
+		if (nNitroType == NITRO_INFINITE) pPlayer->pCar->GetNitro() = 10;
+#else
 		if (nNitroType == NITRO_NONE) pPlayer->pCar->fNitro = 0;
 		if (nNitroType == NITRO_INFINITE) pPlayer->pCar->fNitro = 10;
+#endif
 	}
 
 	if (nGhostVisuals == 2 && playerId == 0) {
@@ -875,6 +889,10 @@ void __fastcall OnFinishLap(uint32_t lapTime) {
 
 		if (ply->nCurrentLap != GetScoreManager()->nNumLaps) return;
 	}
+
+#ifdef FLATOUT_1
+	n3LapTotalTime = pPlayerHost->nRaceTime;
+#endif
 
 	uint32_t replayTime = b3LapMode ? n3LapTotalTime : lapTime;
 
