@@ -881,7 +881,9 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 #ifdef FLATOUT_1
 void __fastcall OnFinishLap() {
 	auto ply = GetPlayerScore<PlayerScoreRace>(1);
-	auto lapTime = ply->nLapTime;
+	auto lapTime = aRecordingGhost.size() * 10;
+	//auto lapTime = ply->nLapTimes[ply->nCurrentLap - 1];
+	//if (ply->nCurrentLap > 1) lapTime -= ply->nLapTimes[ply->nCurrentLap - 2];
 #else
 void __fastcall OnFinishLap(uint32_t lapTime) {
 	auto ply = GetPlayerScore<PlayerScoreRace>(1);
