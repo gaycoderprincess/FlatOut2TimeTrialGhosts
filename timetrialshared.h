@@ -37,7 +37,9 @@ enum eLapType {
 enum eNitroType {
 	NITRO_NONE,
 	NITRO_FULL,
+#ifndef FLATOUT_1
 	NITRO_DOUBLE,
+#endif
 	NITRO_INFINITE,
 };
 int nNitroType = NITRO_FULL;
@@ -302,9 +304,11 @@ std::string GetGhostFilename(int car, int track, int lapType, int opponentType, 
 			case NITRO_NONE:
 				path += useLegacyNaming ? "_nonitro" : "_0x";
 				break;
+#ifndef FLATOUT_1
 			case NITRO_DOUBLE:
 				path += useLegacyNaming ? "_2xnitro" : "_2x";
 				break;
+#endif
 			case NITRO_INFINITE:
 				path += useLegacyNaming ? "_infnitro" : "_inf";
 				break;
