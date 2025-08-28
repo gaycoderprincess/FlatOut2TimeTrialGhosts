@@ -46,6 +46,7 @@ int nNitroType = NITRO_FULL;
 int nUpgradeLevel = 0;
 int nHandlingMode = 0;
 int nGhostVisuals = 2;
+bool bTrackReversed = false;
 #ifdef FLATOUT_UC
 bool bIsFO2Track = false;
 #endif
@@ -321,6 +322,9 @@ std::string GetGhostFilename(int car, int track, int lapType, int opponentType, 
 	}
 	if (!bIsCareerRallyMode && nHandlingMode) {
 		path += (useLegacyNaming ? "_handling" : "_hnd") + std::to_string(nHandlingMode);
+	}
+	if (bTrackReversed) {
+		path += "_rev";
 	}
 	if (bIsCareerMode) {
 		if (opponentType) path += "_" + std::to_string(opponentType);
