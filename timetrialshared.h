@@ -502,6 +502,10 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, int opponentTyp
 	ghost->nLastRacePBTime = tmptime;
 	int count = 0;
 	inFile.read((char*)&count, sizeof(count));
+	if (count <= 50) {
+		WriteLog("Invalid ghost length for " + fileName);
+		return;
+	}
 	ghost->aPBGhost.reserve(count);
 	for (int i = 0; i < count; i++) {
 		tCarState state;
@@ -912,7 +916,7 @@ void __fastcall OnFinishLap(uint32_t lapTime) {
 	if (b3LapMode) ghost = &ThreeLapPB;
 	if (bIsCareerMode || bIsCareerRallyMode) ghost = &StandingLapPB;
 
-	if (!bViewReplayMode) {
+	if (!bViewReplayMode && replayTime > 500) {
 		nCareerLastRacePBTime = replayTime;
 		if (replayTime < ghost->GetFinishTime()) {
 			WriteLog("Saving new lap PB of " + std::to_string(replayTime) + "ms");
