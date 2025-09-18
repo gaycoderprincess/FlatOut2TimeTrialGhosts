@@ -56,6 +56,7 @@ bool bShowInputsWhileDriving = false;
 bool bTimeTrialsEnabled = true;
 bool bPBTimeDisplayEnabled = true;
 bool bCurrentSessionPBTimeDisplayEnabled = false;
+float fGhostTimeOffset = 0;
 bool bChloeCollectionIntegration = false;
 bool bLastRaceWasTimeTrial = false;
 bool bReplayIgnoreMismatches = false;
@@ -632,7 +633,8 @@ void InvalidateGhost() {
 }
 
 int GetCurrentPlaybackTick(tGhostSetup* ghost) {
-	double currTime = ghost->fPlaybackTimer;
+	double currTime = ghost->fPlaybackTimer + fGhostTimeOffset;
+	if (currTime < 0) currTime = 0;
 	int tick = std::floor(100 * currTime);
 	if (tick > ghost->aPBGhost.size() - 1) tick = ghost->aPBGhost.size() - 1;
 	return tick;
@@ -1294,6 +1296,10 @@ void TimeTrialMenu() {
 
 	if (DrawMenuOption(std::format("Show Inputs While Driving - {}", bShowInputsWhileDriving), "", false, false)) {
 		bShowInputsWhileDriving = !bShowInputsWhileDriving;
+	}
+
+	if (DrawMenuOption(std::format("Ghost Time Offset - {}", fGhostTimeOffset))) {
+		ValueEditorMenu(fGhostTimeOffset);
 	}
 
 	if (bChloeCollectionIntegration) {
