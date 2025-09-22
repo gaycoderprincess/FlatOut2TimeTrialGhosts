@@ -502,7 +502,7 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, int opponentTyp
 	ghost->nLastRacePBTime = tmptime;
 	int count = 0;
 	inFile.read((char*)&count, sizeof(count));
-	if (count <= 50) {
+	if (count <= 100) {
 		WriteLog("Invalid ghost length for " + fileName);
 		return;
 	}
@@ -892,8 +892,13 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 void __fastcall OnFinishLap() {
 	auto ply = GetPlayerScore<PlayerScoreRace>(1);
 	auto lapTime = aRecordingGhost.size() * 10;
-	//auto lapTime = ply->nLapTimes[ply->nCurrentLap - 1];
-	//if (ply->nCurrentLap > 1) lapTime -= ply->nLapTimes[ply->nCurrentLap - 2];
+
+	if (!b3LapMode) {
+		auto lapTime2 = ply->nLapTimes[ply->nCurrentLap - 1];
+		if (ply->nCurrentLap > 1) lapTime2 -= ply->nLapTimes[ply->nCurrentLap - 2];
+		if (lapTime2 > lapTime + 1000) return;
+	}
+
 #else
 void __fastcall OnFinishLap(uint32_t lapTime) {
 	auto ply = GetPlayerScore<PlayerScoreRace>(1);
@@ -916,7 +921,7 @@ void __fastcall OnFinishLap(uint32_t lapTime) {
 	if (b3LapMode) ghost = &ThreeLapPB;
 	if (bIsCareerMode || bIsCareerRallyMode) ghost = &StandingLapPB;
 
-	if (!bViewReplayMode && replayTime > 500) {
+	if (!bViewReplayMode && replayTime > 1000) {
 		nCareerLastRacePBTime = replayTime;
 		if (replayTime < ghost->GetFinishTime()) {
 			WriteLog("Saving new lap PB of " + std::to_string(replayTime) + "ms");
