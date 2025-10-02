@@ -13,8 +13,14 @@ int GetLevelID() {
 int GetGameState() {
 	return pGameFlow->nGameState;
 }
-int GetScoreManager() {
+ScoreManager* GetScoreManager() {
 	return pScoreManager;
+}
+#endif
+
+#ifndef FLATOUT_1
+PlayerScoreRace* GetPlayerScore(int playerId) {
+	return GetPlayerScore<PlayerScoreRace>(playerId);
 }
 #endif
 
@@ -680,7 +686,7 @@ void RunGhost(Player* pPlayer) {
 	int targetPlayer = bViewReplayMode ? 0 : 1;
 
 	int playerId = pPlayer->nPlayerId-1;
-	auto ply = GetPlayerScore<PlayerScoreRace>(1);
+	auto ply = GetPlayerScore(1);
 	tGhostSetup* ghost = nullptr;
 	if (bIsCareerRallyMode) {
 		if (playerId <= 0) ghost = &StandingLapPB;
@@ -716,7 +722,7 @@ void RunGhost(Player* pPlayer) {
 			pEventManager->PostEvent(&eventData);
 			pPlayer->nIsWrecked = true;
 		}
-		GetPlayerScore<PlayerScoreRace>(pPlayer->nPlayerId)->bIsDNF = true;
+		GetPlayerScore(pPlayer->nPlayerId)->bIsDNF = true;
 	}
 #endif
 	ghost->fLastUsedTimescale = timescale;
@@ -854,7 +860,7 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 		SetGhostVisuals((localPlayerPos - ghostPlayerPos).length() < 8 || (localPlayerPos - opponentGhostPlayerPos).length() < 8);
 	}
 
-	auto ply = GetPlayerScore<PlayerScoreRace>(1);
+	auto ply = GetPlayerScore(1);
 	if (IsPlayerStaging(localPlayer) && ply->nCurrentLap == 0) {
 		InvalidateGhost();
 	}
@@ -890,7 +896,7 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 
 #ifdef FLATOUT_1
 void __fastcall OnFinishLap() {
-	auto ply = GetPlayerScore<PlayerScoreRace>(1);
+	auto ply = GetPlayerScore(1);
 	auto lapTime = aRecordingGhost.size() * 10;
 
 	if (!b3LapMode) {
@@ -901,7 +907,7 @@ void __fastcall OnFinishLap() {
 
 #else
 void __fastcall OnFinishLap(uint32_t lapTime) {
-	auto ply = GetPlayerScore<PlayerScoreRace>(1);
+	auto ply = GetPlayerScore(1);
 #endif
 	bool isFirstLap = (ply->nCurrentLap - 1) == 0; // it's already increased by this point
 	if (b3LapMode) {
@@ -1089,7 +1095,7 @@ void HookLoop() {
 #else
 	if (player && !pGameFlow->nIsPauseMenuUp) {
 #endif
-		auto ply = GetPlayerScore<PlayerScoreRace>(1);
+		auto ply = GetPlayerScore(1);
 
 		if (bViewReplayMode) {
 			auto ghost = ply->nCurrentLap == 0 ? &StandingLapPB : &RollingLapPB;
