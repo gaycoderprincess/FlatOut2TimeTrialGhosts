@@ -129,7 +129,9 @@ struct tCarState {
 		brake = car->fBrakePedal;
 		nitroHeld = car->fNitroButton;
 		handbrake = car->fHandbrake;
-#ifndef FLATOUT_1
+#ifdef FLATOUT_1
+		gear = car->Performance.Gearbox.nCurrentGear;
+#else
 		gear = car->mGearbox.nGear;
 #endif
 	}
@@ -151,7 +153,9 @@ struct tCarState {
 		car->fBrakePedal = brake;
 		car->fNitroButton = nitroHeld;
 		car->fHandbrake = handbrake;
-#ifndef FLATOUT_1
+#ifdef FLATOUT_1
+		car->Performance.Gearbox.ChangeGear(gear < -1 || gear > 6 ? 1 : gear);
+#else
 		car->mGearbox.nGear = gear;
 #endif
 		if ((bIsCareerMode || bIsCareerRallyMode) && !bDisplayGhostsInCareer && !bViewReplayMode) {
