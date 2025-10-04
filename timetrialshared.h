@@ -154,7 +154,7 @@ struct tCarState {
 		car->fNitroButton = nitroHeld;
 		car->fHandbrake = handbrake;
 #ifdef FLATOUT_1
-		car->Performance.Gearbox.ChangeGear(gear < -1 || gear > 6 ? 1 : gear);
+		car->Performance.Gearbox.ChangeToGear(gear < -1 || gear > 6 ? 1 : gear);
 #else
 		car->mGearbox.nGear = gear;
 #endif
