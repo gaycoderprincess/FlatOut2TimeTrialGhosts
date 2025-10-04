@@ -242,14 +242,7 @@ bool bGhostLoaded = false;
 double fGhostRecordTotalTime = 0;
 
 bool IsPlayerStaging(Player* pPlayer) {
-#ifdef FLATOUT_1
-	return pPlayer->nInputFlags.bHoldBrake && pPlayer->nInputFlags.bIsStaging;
-#else
-	if (bIsCareerMode || bIsCareerRallyMode) {
-		return pGameFlow->nRaceState != RACE_STATE_RACING && pGameFlow->nRaceState != RACE_STATE_FINISHED;
-	}
-	return (pPlayer->nSomeFlags & 2) != 0;
-#endif
+	return pPlayerHost->nRaceTime < 0;
 }
 
 bool ShouldGhostRun() {
@@ -679,15 +672,11 @@ bool ShouldGhostRubberband(tGhostSetup* ghost, Player* pGhostPlayer) {
 }
 
 void RunGhost(Player* pPlayer) {
-	if (!pPlayer) return;
-
 #ifndef FLATOUT_1
 	auto eventData = tEventData(EVENT_PLAYER_RESPAWN_GHOST);
 	eventData.data[3] = 1000;
 	pPlayer->TriggerEvent(&eventData);
 #endif
-
-	int targetPlayer = bViewReplayMode ? 0 : 1;
 
 	int playerId = pPlayer->nPlayerId-1;
 	auto ply = GetPlayerScore(1);
@@ -737,7 +726,6 @@ void RunGhost(Player* pPlayer) {
 		return;
 	}
 
-	if (bViewReplayMode) SetPlayerControl(false);
 	ghost->aPBGhost[GetCurrentPlaybackTick(ghost)].Apply(pPlayer);
 }
 
@@ -798,18 +786,18 @@ void RecordGhost(Player* pPlayer) {
 }
 
 #ifdef FLATOUT_1
-void __fastcall ProcessGhostCar(Player* pPlayer, float time) {
+void __thiscall ProcessGhostCar(Player* pPlayer, float time) {
 #else
 void __fastcall ProcessGhostCar(Player* pPlayer) {
 #endif
 	if (!bTimeTrialsEnabled) return;
-	if (!pPlayer) return;
 	if (pLoadingScreen) return;
+
+	SetPlayerControl(!bViewReplayMode);
+
 #ifdef FLATOUT_1
 	if (pGameFlow->nIsInReplay) return;
 #endif
-
-	if (bViewReplayMode) SetPlayerControl(true);
 
 	auto playerId = pPlayer->nPlayerId-1;
 	auto localPlayer = GetPlayer(0);
@@ -865,7 +853,7 @@ void __fastcall ProcessGhostCar(Player* pPlayer) {
 	}
 
 	auto ply = GetPlayerScore(1);
-	if (IsPlayerStaging(localPlayer) && ply->nCurrentLap == 0) {
+	if (IsPlayerStaging(localPlayer)) {
 		InvalidateGhost();
 	}
 
@@ -1199,6 +1187,7 @@ void HookLoop() {
 		if (currentGameState != nLastGameState) {
 			if (currentGameState == GAME_STATE_MENU && bTimeTrialsEnabled) {
 				UninitTimeTrials();
+				SetPlayerControl(true);
 				bTimeTrialsEnabled = false;
 			}
 #ifdef FLATOUT_1
