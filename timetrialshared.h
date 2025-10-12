@@ -32,6 +32,8 @@ enum eReplayInput {
 	REPLAYINPUT_RIGHT,
 	REPLAYINPUT_GAS,
 	REPLAYINPUT_BRAKE,
+	REPLAYINPUT_GEARUP,
+	REPLAYINPUT_GEARDOWN,
 };
 
 enum eLapType {
@@ -733,9 +735,27 @@ tInputState RecordInputs(Player* pPlayer) {
 	static tInputState inputState;
 	memset(&inputState, 0, sizeof(inputState));
 #ifdef FLATOUT_1
-	//inputState.keys[REPLAYINPUT_GAS] = pPlayer->fGasPedal;
-	//inputState.keys[REPLAYINPUT_BRAKE] = pPlayer->fBrakePedal;
-	//inputState.keys[REPLAYINPUT_LEFT] = pPlayer->fOutputSteerAngle;
+	inputState.keys[REPLAYINPUT_GAS] = pPlayer->fGasPedal * 127;
+	inputState.keys[REPLAYINPUT_BRAKE] = pPlayer->fBrakePedal * 127;
+	float steer = 0;
+	pPlayer->pController->_vf_GetAnalogInput(0, &steer);
+	if (abs(steer) <= 0.0) {
+		if (pPlayer->pController->_vf_GetInputValue(CONTROLLER_BUTTON_LEFT)) steer -= 1;
+		if (pPlayer->pController->_vf_GetInputValue(CONTROLLER_BUTTON_RIGHT)) steer += 1;
+	}
+	if (steer < 0) {
+		inputState.keys[REPLAYINPUT_LEFT] = -steer * 127;
+		inputState.keys[REPLAYINPUT_RIGHT] = 0;
+	}
+	else {
+		inputState.keys[REPLAYINPUT_LEFT] = 0;
+		inputState.keys[REPLAYINPUT_RIGHT] = steer * 127;
+	}
+	inputState.keys[REPLAYINPUT_NITRO] = pPlayer->pController->_vf_GetInputValue(1);
+	inputState.keys[REPLAYINPUT_HANDBRAKE] = pPlayer->pController->_vf_GetInputValue(0);
+	inputState.keys[REPLAYINPUT_RESET] = pPlayer->pController->_vf_GetInputValue(5);
+	inputState.keys[REPLAYINPUT_GEARUP] = pPlayer->pController->_vf_GetInputValue(19);
+	inputState.keys[REPLAYINPUT_GEARDOWN] = pPlayer->pController->_vf_GetInputValue(18);
 #elif FLATOUT_UC
 	for (int i = 0; i < 20; i++) {
 		inputState.keys[i] = pPlayer->pController->GetInputValue(i);
@@ -757,7 +777,7 @@ tInputState RecordInputs(Player* pPlayer) {
 #else
 	if (pPlayer->pController->_4[-1] == pControllerVTable) {
 		for (int i = 0; i < 20; i++) {
-			auto value =  GetAnalogInput(pPlayer->pController, &pPlayer->pController->aInputs[i]) * 128;
+			auto value = GetAnalogInput(pPlayer->pController, &pPlayer->pController->aInputs[i]) * 128;
 			if (value < 0) inputState.keys[i] = 0;
 			else inputState.keys[i] = value;
 		}
@@ -773,9 +793,7 @@ tInputState RecordInputs(Player* pPlayer) {
 
 void RecordGhost(Player* pPlayer) {
 	if (!pPlayer) return;
-#ifndef FLATOUT_1
 	if (!pPlayer->pController) return;
-#endif
 
 	fGhostRecordTotalTime += 0.01;
 
@@ -1036,7 +1054,19 @@ void DrawInputRectangle(float posX, float posY, float scaleX, float scaleY, floa
 }
 
 void DisplayInputs(tInputState* inputs) {
-#ifndef FLATOUT_1
+#ifdef FLATOUT_1
+	DrawInputTriangle((fInputBaseXPosition - 0.005) * GetAspectRatioInv(), fInputBaseYPosition, 0.08 * GetAspectRatioInv(), 0.07, 1 - (inputs->keys[REPLAYINPUT_LEFT] / 128.0), true);
+	DrawInputTriangle((fInputBaseXPosition + 0.08) * GetAspectRatioInv(), fInputBaseYPosition, -0.08 * GetAspectRatioInv(), 0.07, inputs->keys[REPLAYINPUT_RIGHT] / 128.0, false);
+	DrawInputTriangleY((fInputBaseXPosition + 0.0375) * GetAspectRatioInv(), fInputBaseYPosition - 0.05, 0.035 * GetAspectRatioInv(), 0.045, 1 - (inputs->keys[REPLAYINPUT_GAS] / 128.0), true);
+	DrawInputTriangleY((fInputBaseXPosition + 0.0375) * GetAspectRatioInv(), fInputBaseYPosition + 0.05, 0.035 * GetAspectRatioInv(), -0.045, inputs->keys[REPLAYINPUT_BRAKE] / 128.0, false);
+
+	DrawInputTriangleY((fInputBaseXPosition + 0.225) * GetAspectRatioInv(), fInputBaseYPosition - 0.04, 0.035 * GetAspectRatioInv(), 0.035, inputs->keys[REPLAYINPUT_GEARUP] > 0 ? 1 : 0, false);
+	DrawInputTriangleY((fInputBaseXPosition + 0.225) * GetAspectRatioInv(), fInputBaseYPosition + 0.04, 0.035 * GetAspectRatioInv(), -0.035, inputs->keys[REPLAYINPUT_GEARDOWN] > 0 ? 1 : 0, false);
+
+	DrawInputRectangle((fInputBaseXPosition + 0.325) * GetAspectRatioInv(), fInputBaseYPosition + 0.05, 0.03 * GetAspectRatioInv(), 0.03, inputs->keys[REPLAYINPUT_NITRO] / 128.0 > 0 ? 1 : 0);
+	DrawInputRectangle((fInputBaseXPosition + 0.425) * GetAspectRatioInv(), fInputBaseYPosition + 0.05, 0.03 * GetAspectRatioInv(), 0.03, inputs->keys[REPLAYINPUT_HANDBRAKE] / 128.0 > 0 ? 1 : 0);
+	DrawInputRectangle((fInputBaseXPosition + 0.525) * GetAspectRatioInv(), fInputBaseYPosition + 0.05, 0.03 * GetAspectRatioInv(), 0.03, inputs->keys[REPLAYINPUT_RESET] / 128.0 > 0 ? 1 : 0);
+#else
 	DrawInputTriangle((fInputBaseXPosition - 0.005) * GetAspectRatioInv(), fInputBaseYPosition, 0.08 * GetAspectRatioInv(), 0.07, 1 - (inputs->keys[INPUT_STEER_LEFT] / 128.0), true);
 	DrawInputTriangle((fInputBaseXPosition + 0.08) * GetAspectRatioInv(), fInputBaseYPosition, -0.08 * GetAspectRatioInv(), 0.07, inputs->keys[INPUT_STEER_RIGHT] / 128.0, false);
 	DrawInputTriangleY((fInputBaseXPosition + 0.0375) * GetAspectRatioInv(), fInputBaseYPosition - 0.05, 0.035 * GetAspectRatioInv(), 0.045, 1 - (inputs->keys[INPUT_ACCELERATE] / 128.0), true);
