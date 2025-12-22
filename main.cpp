@@ -177,6 +177,35 @@ void OnD3DReset() {
 	}
 }
 
+void DoFileIntegrityCheck(void* a1, const char* path) {
+	int tmp[2];
+	if (!pBfsManager) return;
+	if (!BfsManager::DoesFileExist(pBfsManager, path, tmp)) return;
+	CheckFileIntegrity(a1, path);
+}
+
+// check car model data for file integrity, this'll break multiplayer but this mod doesn't work there anyway
+void __fastcall FileIntegrityHooked(void* a1) {
+	for (int i = 0; i < 256; i++) {
+		// i hate my life WHY DOES THIS CRASH
+		DoFileIntegrityCheck(a1, std::format("data/cars/car_{}/body.bgm", i+1).c_str());
+		DoFileIntegrityCheck(a1, std::format("data/cars/car_{}/body.ini", i+1).c_str());
+	}
+}
+
+uintptr_t FileIntegrityHookedASM_jmp = 0x552FE0;
+void __attribute__((naked)) __fastcall FileIntegrityHookedASM() {
+	__asm__ (
+		"pushad\n\t"
+		"mov ecx, ebx\n\t"
+		"call %1\n\t"
+		"popad\n\t"
+		"jmp %0\n\t"
+			:
+			: "m" (FileIntegrityHookedASM_jmp), "i" (FileIntegrityHooked)
+	);
+}
+
 BOOL WINAPI DllMain(HINSTANCE, DWORD fdwReason, LPVOID) {
 	switch( fdwReason ) {
 		case DLL_PROCESS_ATTACH: {
@@ -185,6 +214,8 @@ BOOL WINAPI DllMain(HINSTANCE, DWORD fdwReason, LPVOID) {
 			InitAndReadConfigFile();
 
 			ChloeMenuLib::RegisterMenu("Time Trial Ghosts - gaycoderprincess", &TimeTrialMenu);
+
+			//NyaHookLib::PatchRelative(NyaHookLib::CALL, 0x4A6FA2, &FileIntegrityHookedASM);
 
 			if (bTimeTrialsEnabled) {
 				ProcessGhostCarsASM_call = NyaHookLib::PatchRelative(NyaHookLib::CALL, 0x409440, &ProcessGhostCarsASM);

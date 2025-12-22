@@ -1,4 +1,4 @@
-const int nLocalReplayVersion = 5;
+const int nLocalReplayVersion = 6;
 const int nNumCareerRallyOpponents = 12;
 
 int GetLevelID() {
@@ -380,6 +380,7 @@ void SavePB(tGhostSetup* ghost, int car, int track, uint8_t lapType) {
 	outFile.write((char*)&bTimeTrialIsFOUC, sizeof(bTimeTrialIsFOUC));
 	outFile.write((char*)&GetPlayer(0)->nCarSkinId, 1);
 	outFile.write((char*)pGameFlow->Profile.sPlayerName, sizeof(pGameFlow->Profile.sPlayerName));
+	outFile.write((char*)pGameFilesChecksum1, 20);
 	int count = ghost->aPBGhost.size();
 	outFile.write((char*)&count, sizeof(count));
 	outFile.write((char*)&ghost->aPBGhost[0], sizeof(ghost->aPBGhost[0]) * count);
@@ -460,6 +461,8 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, int opponentTyp
 	uint8_t tmpcarskin = 1;
 	wchar_t tmpplayername[16];
 	wcscpy_s(tmpplayername, 16, opponentType ? L"OPPONENT GHOST" : L"PB GHOST");
+	char checksum[20];
+	memcpy(checksum, pGameFilesChecksum1, sizeof(checksum));
 	inFile.read((char*)&tmpcar, sizeof(tmpcar));
 	inFile.read((char*)&tmptrack, sizeof(tmptrack));
 	inFile.read((char*)&tmptime, sizeof(tmptime));
@@ -476,7 +479,10 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, int opponentTyp
 	if (fileVersion >= 5) {
 		inFile.read((char*)&tmpcarskin, sizeof(tmpcarskin));
 		inFile.read((char*)tmpplayername, sizeof(tmpplayername));
-		tmpplayername[15]=0;
+		tmpplayername[15] = 0;
+	}
+	if (fileVersion >= 6) {
+		inFile.read(checksum, sizeof(checksum));
 	}
 	if (tmpsize != sizeof(tCarState)) {
 		WriteLog("Outdated ghost for " + fileName);
@@ -495,6 +501,10 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, int opponentTyp
 		}
 		if (tmpupgrade != nUpgradeLevel || (!bIsCareerMode && !bIsCareerRallyMode && tmphandling != nHandlingMode) || tmpfouc != bTimeTrialIsFOUC) {
 			WriteLog("Mismatched ghost for " + fileName);
+			return;
+		}
+		if (memcmp(checksum, pGameFilesChecksum1, 20) != 0) {
+			WriteLog("Mismatched game files for " + fileName);
 			return;
 		}
 	}
@@ -679,6 +689,10 @@ void RunGhost(Player* pPlayer) {
 	eventData.data[3] = 1000;
 	pPlayer->TriggerEvent(&eventData);
 #endif
+
+	if (!b3LapMode && !bIsCareerMode && !bIsCareerRallyMode) {
+		GetScoreManager()->nNumLaps = 10;
+	}
 
 	int playerId = pPlayer->nPlayerId-1;
 	auto ply = GetPlayerScore(1);
@@ -1115,7 +1129,11 @@ void HookLoop() {
 #ifdef FLATOUT_1
 	if (player && !GetScoreManager()->nHideRaceHUD) {
 #else
+#ifdef FLATOUT_2
 	if (player && !pGameFlow->nIsPauseMenuUp) {
+#else
+	if (player && !GameFlow::gPauseMenuUp) {
+#endif
 #endif
 		auto ply = GetPlayerScore(1);
 
