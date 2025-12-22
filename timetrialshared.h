@@ -1129,10 +1129,10 @@ void HookLoop() {
 #ifdef FLATOUT_1
 	if (player && !GetScoreManager()->nHideRaceHUD) {
 #else
-#ifdef FLATOUT_2
+#ifdef FLATOUT_UC
 	if (player && !pGameFlow->nIsPauseMenuUp) {
 #else
-	if (player && !GameFlow::gPauseMenuUp) {
+	if (player) {
 #endif
 #endif
 		auto ply = GetPlayerScore(1);
