@@ -508,6 +508,12 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, int opponentTyp
 			return;
 		}
 	}
+	int count = 0;
+	inFile.read((char*)&count, sizeof(count));
+	if (count <= 100) {
+		WriteLog("Invalid ghost length for " + fileName);
+		return;
+	}
 	ghost->nCarSkinId = tmpcarskin;
 	ghost->sPlayerName = tmpplayername;
 	if (bIsCareerMode && ghost->sPlayerName == L"Bul") {
@@ -515,12 +521,6 @@ void LoadPB(tGhostSetup* ghost, int car, int track, int lapType, int opponentTyp
 	}
 	ghost->nPBTime = tmptime;
 	ghost->nLastRacePBTime = tmptime;
-	int count = 0;
-	inFile.read((char*)&count, sizeof(count));
-	if (count <= 100) {
-		WriteLog("Invalid ghost length for " + fileName);
-		return;
-	}
 	ghost->aPBGhost.reserve(count);
 	for (int i = 0; i < count; i++) {
 		tCarState state;
